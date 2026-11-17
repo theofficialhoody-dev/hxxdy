@@ -1,2 +1,2 @@
 # hxxdy
-laucnher
+custom launcher
