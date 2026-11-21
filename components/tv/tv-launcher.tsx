@@ -8,6 +8,7 @@ import {
   PLAY_PACKAGES,
   registerNativeApps,
   services,
+  tasteItems,
   type ContinueItem,
   type HeroSlide,
   type LauncherApp,
@@ -30,10 +31,12 @@ import {
 import { NUVIO_PACKAGE, nuvioFeaturedSlides, refreshTrendingSlides } from '@/lib/nuvio-featured'
 import { getNavigationSoundVolume, playNavigationSound } from '@/lib/navigation-sounds'
 import {
+  applyThemeCssVariables,
   BUILT_IN_THEMES,
   deleteCustomThemeFromStorage,
   getCustomThemes,
   getStoredThemeId,
+  resolveThemeTokens,
   saveCustomThemeToStorage,
   setStoredThemeId,
   type ThemeConfig,
@@ -42,6 +45,7 @@ import { TopHeader } from './top-header'
 import { HeroBackdrop } from './hero-backdrop'
 import { HeroInfo } from './hero-info'
 import { ContinueWatchingRow } from './continue-watching-row'
+import { YourTasteRow } from './your-taste-row'
 import { AppsRow } from './apps-row'
 import { LaunchOverlay, type LaunchState } from './launch-overlay'
 import { ThemeModal } from './theme-modal'
@@ -51,12 +55,13 @@ import { AppsMenuModal } from './apps-menu-modal'
 import { SurfsharkModal } from './surfshark-modal'
 import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings, SettingsModal, type LauncherSettings } from './settings-modal'
 import { createProfile, loadProfiles, saveProfiles, type Profile } from '@/lib/profiles'
-type Zone = 'nav' | 'hero' | 'continue' | 'appsControls' | 'apps'
+type Zone = 'nav' | 'hero' | 'continue' | 'taste' | 'appsControls' | 'apps'
 
-const ZONES: Zone[] = ['nav', 'hero', 'continue', 'appsControls', 'apps']
+const ZONES: Zone[] = ['nav', 'hero', 'continue', 'taste', 'appsControls', 'apps']
 const SLIDE_MS = 9000
 const LAUNCH_MS = 2200
-const LONG_PRESS_MS = 650
+const LONG_PRESS_MS = 500
+const HOLD_INDICATOR_MS = 120
 const LAUNCH_DELAY_MS = 300
 const SURFSHARK_PACKAGE = 'com.surfshark.vpnclient.android'
 const YOUTUBE_PACKAGE = 'com.google.android.youtube.tv'
@@ -151,7 +156,7 @@ function retainUnchangedItems<T>(previous: T[], next: T[], key: (item: T) => str
 }
 
 /** Where each shelf's top edge should rest, as a fraction of viewport height, when focused. */
-const shelfAnchor = { continue: 0.17, apps: 0.52 } as const
+const shelfAnchor = { continue: 0.22, taste: 0.11, apps: 0.45 } as const
 
 export function TvLauncher() {
   // Real data is only known on the client (the Android shell injects its bridge), so render nothing until then.
@@ -168,13 +173,14 @@ export function TvLauncher() {
   const [appsMenuRowEdit, setAppsMenuRowEdit] = useState(false)
   const [organize, setOrganize] = useState(false)
   const [movingApp, setMovingApp] = useState(false)
+  const [holdingAppIndex, setHoldingAppIndex] = useState<number | null>(null)
   const [order, setOrder] = useState<string[]>([])
   const [hidden, setHidden] = useState<string[]>([])
   const [demoAdded, setDemoAdded] = useState<string[]>([])
   const [demoRemoved, setDemoRemoved] = useState<string[]>([])
 
   const [zone, setZone] = useState<Zone>('hero')
-  const [indices, setIndices] = useState<Record<Zone, number>>({ nav: 0, hero: 0, continue: 0, appsControls: 0, apps: 0 })
+  const [indices, setIndices] = useState<Record<Zone, number>>({ nav: 0, hero: 0, continue: 0, taste: 0, appsControls: 0, apps: 0 })
   const [slide, setSlide] = useState(0)
   const [launch, setLaunch] = useState<LaunchState | null>(null)
   const [docHidden, setDocHidden] = useState(false)
@@ -200,17 +206,12 @@ export function TvLauncher() {
   const allThemes = useMemo(() => [...BUILT_IN_THEMES, ...customThemes], [customThemes])
   const currentTheme = allThemes.find((t) => t.id === themeId) || BUILT_IN_THEMES[0]
 
+  const currentThemeTokens = useMemo(() => resolveThemeTokens(currentTheme), [currentTheme])
+
   useEffect(() => {
     if (!ready || isThemeModalOpen || isCreateModalOpen) return
     const root = document.querySelector('main')
-    if (!root) return
-    root.style.setProperty('--tv-bg', currentTheme.bg)
-    root.style.setProperty('--tv-accent', currentTheme.accent)
-    root.style.setProperty('--tv-accent-text', currentTheme.accentText)
-    root.style.setProperty('--tv-glow', currentTheme.glow1)
-    root.style.setProperty('--tv-glow-2', currentTheme.glow2)
-    root.style.setProperty('--tv-glass', currentTheme.glassBg)
-    root.style.setProperty('--tv-glass-border', currentTheme.glassBorder)
+    applyThemeCssVariables(currentTheme, root)
   }, [ready, isThemeModalOpen, isCreateModalOpen, currentTheme])
 
   const persistActiveProfileTheme = (nextThemeId: string) => {
@@ -281,6 +282,12 @@ export function TvLauncher() {
     saveProfiles(updated, activeProfileId)
   }
 
+  const handleUpdateProfileColor = (id: string, color: string) => {
+    const updated = profiles.map((p) => (p.id === id ? { ...p, color } : p))
+    setProfiles(updated)
+    saveProfiles(updated, activeProfileId)
+  }
+
   const handleDeleteProfile = (id: string) => {
     if (profiles.length <= 1) return
     const updated = profiles.filter((p) => p.id !== id)
@@ -344,14 +351,19 @@ export function TvLauncher() {
     [appById],
   )
 
-  const itemRefs = useRef<Record<Zone, (HTMLElement | null)[]>>({ nav: [], hero: [], continue: [], appsControls: [], apps: [] })
+  const itemRefs = useRef<Record<Zone, (HTMLElement | null)[]>>({ nav: [], hero: [], continue: [], taste: [], appsControls: [], apps: [] })
   const pressRef = useRef<{ handled: boolean; zone: Zone; index: number } | null>(null)
   const pressTimerRef = useRef<number | undefined>(undefined)
+  const holdVisualTimerRef = useRef<number | undefined>(undefined)
+  const pointerPressRef = useRef<{ index: number; handled: boolean } | null>(null)
+  const pointerTimerRef = useRef<number | undefined>(undefined)
+  const pointerVisualTimerRef = useRef<number | undefined>(undefined)
   const pointerReadyRef = useRef(true)
+  const wheelLockRef = useRef(0)
   const stackRef = useRef<HTMLDivElement>(null)
   const continueSectionRef = useRef<HTMLElement>(null)
+  const tasteSectionRef = useRef<HTMLElement>(null)
   const appsSectionRef = useRef<HTMLElement>(null)
-  const continueShelfRef = useRef<HTMLUListElement>(null)
   const appsShelfRef = useRef<HTMLUListElement>(null)
 
   const register = useCallback(
@@ -397,9 +409,8 @@ export function TvLauncher() {
       setOrder(next)
       writeList(ORDER_KEY, next)
       focusItem('apps', to)
-      setNotice({ key: Date.now(), text: `${appInfo(moved).name} · position ${to + 1} of ${next.length}` })
     },
-    [appInfo, appsList, focusItem],
+    [appsList, focusItem],
   )
 
   const resetApps = useCallback(() => {
@@ -519,6 +530,17 @@ export function TvLauncher() {
         })
         return
       }
+      if (z === 'taste') {
+        const item = tasteItems[index]
+        if (!item) return
+        const info = appInfo(item.service)
+        startLaunch(() => data.native ? Boolean(info.pkg && launchApp(info.pkg)) : true, {
+          name: services[item.service]?.name ?? item.title,
+          service: item.service,
+          action: `Playing ${item.title}`,
+        })
+        return
+      }
       if (z === 'appsControls') {
         if (!organize) {
           setOrganize(true)
@@ -526,7 +548,11 @@ export function TvLauncher() {
           focusItem('apps', Math.min(indices.apps, Math.max(0, appsList.length - 1)))
         } else if (index === 0) {
           openRowEditor()
-        } else if (index === 1) {
+        } else if (data.native && index === 1) {
+          const targetId = appsList[Math.min(indices.apps, Math.max(0, appsList.length - 1))]
+          const pkg = targetId ? appInfo(targetId).pkg : undefined
+          if (pkg && !openAppInfo(pkg)) setNotice({ key: Date.now(), text: 'Could not open app info' })
+        } else if (index === (data.native ? 2 : 1)) {
           resetApps()
         } else {
           setOrganize(false)
@@ -536,6 +562,10 @@ export function TvLauncher() {
         return
       }
       if (index >= appsList.length) {
+        if (organize) {
+          setOrganize(false)
+          setMovingApp(false)
+        }
         openAppsMenu()
         return
       }
@@ -543,7 +573,7 @@ export function TvLauncher() {
       if (!organize) launchById(id)
       else setMovingApp((moving) => !moving)
     },
-    [apps, appsList, continueItems, data.native, focusItem, heroSlides, indices.apps, launchById, navItems, openAppsMenu, openRowEditor, organize, resetApps, slide, startLaunch],
+    [appInfo, appsList, continueItems, data.native, focusItem, heroSlides, indices.apps, launchById, navItems, openAppsMenu, openRowEditor, organize, resetApps, slide, startLaunch],
   )
 
   const activateRef = useRef(activate)
@@ -551,21 +581,86 @@ export function TvLauncher() {
     activateRef.current = activate
   })
   const registerContinue = useMemo(() => register('continue'), [register])
+  const registerTaste = useMemo(() => register('taste'), [register])
   const registerApps = useMemo(() => register('apps'), [register])
   const hoverContinue = useCallback((i: number) => {
     if (pointerReadyRef.current) focusItem('continue', i)
+  }, [focusItem])
+  const selectContinue = useCallback((i: number) => {
+    focusItem('continue', i)
+  }, [focusItem])
+  const hoverTaste = useCallback((i: number) => {
+    if (pointerReadyRef.current) focusItem('taste', i)
+  }, [focusItem])
+  const selectTaste = useCallback((i: number) => {
+    focusItem('taste', i)
   }, [focusItem])
   const hoverApps = useCallback((i: number) => {
     if (pointerReadyRef.current) focusItem('apps', i)
   }, [focusItem])
   const activateContinue = useCallback((i: number) => activateRef.current('continue', i), [])
+  const activateTaste = useCallback((i: number) => activateRef.current('taste', i), [])
   const activateApps = useCallback((i: number) => activateRef.current('apps', i), [])
+
+  const enterOrganizeAndPickApp = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= appsList.length) return
+      setHoldingAppIndex(null)
+      setOrganize(true)
+      setMovingApp(true)
+      focusItem('apps', index)
+    },
+    [appsList.length, focusItem],
+  )
+
+  const clearPointerHold = useCallback(() => {
+    window.clearTimeout(pointerTimerRef.current)
+    window.clearTimeout(pointerVisualTimerRef.current)
+    pointerPressRef.current = null
+    setHoldingAppIndex(null)
+  }, [])
+
+  const handleTilePointerDown = useCallback(
+    (index: number, e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0) return
+      focusItem('apps', index)
+      if (organize || index >= appsList.length) {
+        pointerPressRef.current = { index, handled: false }
+        return
+      }
+      window.clearTimeout(pointerTimerRef.current)
+      window.clearTimeout(pointerVisualTimerRef.current)
+      pointerPressRef.current = { index, handled: false }
+      pointerVisualTimerRef.current = window.setTimeout(() => {
+        if (pointerPressRef.current && !pointerPressRef.current.handled) {
+          setHoldingAppIndex(index)
+        }
+      }, HOLD_INDICATOR_MS)
+      pointerTimerRef.current = window.setTimeout(() => {
+        if (!pointerPressRef.current || pointerPressRef.current.handled) return
+        pointerPressRef.current.handled = true
+        enterOrganizeAndPickApp(index)
+      }, LONG_PRESS_MS)
+    },
+    [appsList.length, enterOrganizeAndPickApp, focusItem, organize],
+  )
+
+  const handleTilePointerUp = useCallback(
+    (index: number) => {
+      const press = pointerPressRef.current
+      clearPointerHold()
+      if (!press || press.handled) return
+      activateRef.current('apps', index)
+    },
+    [clearPointerHold],
+  )
 
   const zoneCounts: Record<Zone, number> = {
     nav: navItems.length,
     hero: heroSlides.length ? 1 : 0,
     continue: continueItems.length,
-    appsControls: organize ? 3 : 1,
+    taste: tasteItems.length,
+    appsControls: organize ? (data.native ? 4 : 3) : 0,
     apps: appsList.length + 1,
   }
   const activeZones = ZONES.filter((z) => zoneCounts[z] > 0)
@@ -577,8 +672,15 @@ export function TvLauncher() {
   const triggerLongPress = useEffectEvent(() => {
     const press = pressRef.current
     window.clearTimeout(pressTimerRef.current)
+    window.clearTimeout(holdVisualTimerRef.current)
+    setHoldingAppIndex(null)
     if (!press || press.handled) return
-    const pkg = press.zone === 'apps' && !organize ? appInfo(appsList[press.index] ?? '').pkg : undefined
+    if (press.zone === 'apps' && !organize && press.index < appsList.length) {
+      press.handled = true
+      enterOrganizeAndPickApp(press.index)
+      return
+    }
+    const pkg = press.zone === 'apps' && press.index < appsList.length ? appInfo(appsList[press.index] ?? '').pkg : undefined
     if (data.native && pkg) {
       press.handled = true
       openAppInfo(pkg)
@@ -665,22 +767,33 @@ export function TvLauncher() {
       event.preventDefault()
       const delta = isLeft ? -1 : 1
       if (zone === 'hero') changeSlide(delta)
-      else if (zone === 'apps' && organize && movingApp) moveApp(indices.apps, indices.apps + delta)
+      else if (zone === 'continue' && continueItems.length > 0) {
+        focusItem('continue', (indices.continue + delta + continueItems.length) % continueItems.length)
+      } else if (zone === 'taste' && tasteItems.length > 0) {
+        focusItem('taste', (indices.taste + delta + tasteItems.length) % tasteItems.length)
+      } else if (zone === 'apps' && organize && movingApp) moveApp(indices.apps, indices.apps + delta)
       else focusItem(zone, Math.min(zoneCounts[zone] - 1, Math.max(0, indices[zone] + delta)))
     } else if (isSelect) {
       event.preventDefault()
-      // Activation happens on key-up so a long press can open app info instead of launching.
-      // A second key-down before key-up means the key is held (the WebView doesn't always flag `repeat`).
+      // Activation happens on key-up so a long press enters Organize & Move mode on app tiles.
+      // Ignore synthetic key repeat events if we already started timing, or trigger immediately if not handled.
       if (pressRef.current) {
-        triggerLongPress()
+        if (!event.repeat) triggerLongPress()
       } else {
         pressRef.current = { handled: false, zone, index: indices[zone] }
+        if (zone === 'apps' && !organize && indices.apps < appsList.length) {
+          window.clearTimeout(holdVisualTimerRef.current)
+          holdVisualTimerRef.current = window.setTimeout(() => {
+            if (pressRef.current && !pressRef.current.handled && pressRef.current.zone === 'apps') {
+              setHoldingAppIndex(pressRef.current.index)
+            }
+          }, HOLD_INDICATOR_MS)
+        }
         pressTimerRef.current = window.setTimeout(triggerLongPress, LONG_PRESS_MS)
       }
     } else if (key === 'ContextMenu' || key === 'i' || key === 'I') {
-      // Menu opens system info for apps and hides Continue Watching items for this profile.
+      // Menu toggles organize mode on apps and hides Continue Watching items for this profile.
       if (zone === 'apps') {
-        // Menu toggles organize mode: Left/Right reorder, Back exits.
         event.preventDefault()
         if (indices.apps < appsList.length) {
           setOrganize((on) => !on)
@@ -692,18 +805,22 @@ export function TvLauncher() {
       }
     } else if (isBack) {
       event.preventDefault()
-      if (movingApp) setMovingApp(false)
-      else if (organize) setOrganize(false)
-      // Back dismisses a mode, but does not unexpectedly move the user's focus.
+      if (movingApp || organize) {
+        setMovingApp(false)
+        setOrganize(false)
+        focusItem('apps', Math.min(indices.apps, Math.max(0, appsList.length - 1)))
+      }
     }
   })
 
   const handleKeyUp = useEffectEvent((event: KeyboardEvent) => {
-    const isSelect = ['Enter', ' ', 'Select', 'Ok', 'MediaSelect'].includes(event.key) || event.keyCode === 23 || event.keyCode === 66
+    const isSelect = ['Enter', ' ', 'Select', 'Ok', 'MediaSelect'].includes(event.key) || event.keyCode === 13 || event.keyCode === 23 || event.keyCode === 66
     if (!isSelect) return
     const press = pressRef.current
     pressRef.current = null
     window.clearTimeout(pressTimerRef.current)
+    window.clearTimeout(holdVisualTimerRef.current)
+    setHoldingAppIndex(null)
     if (!press || press.handled || launch || modalOpen) return
     event.preventDefault()
     activate(press.zone, press.index)
@@ -753,6 +870,7 @@ export function TvLauncher() {
       nav: Math.min(prev.nav, Math.max(0, next.nav.length - 1)),
       hero: prev.hero,
       continue: focusedContinueIndex >= 0 ? focusedContinueIndex : Math.min(prev.continue, Math.max(0, nextContinueItems.length - 1)),
+      taste: prev.taste,
       appsControls: prev.appsControls,
       apps: Math.min(prev.apps, Math.max(0, next.apps.length)),
     }))
@@ -813,7 +931,12 @@ export function TvLauncher() {
     const onResume = () => dismissLaunch(true)
     const resetPress = () => {
       pressRef.current = null
+      pointerPressRef.current = null
+      setHoldingAppIndex(null)
       window.clearTimeout(pressTimerRef.current)
+      window.clearTimeout(holdVisualTimerRef.current)
+      window.clearTimeout(pointerTimerRef.current)
+      window.clearTimeout(pointerVisualTimerRef.current)
     }
     const onHome = () => {
       resetPress()
@@ -858,7 +981,7 @@ export function TvLauncher() {
     const el = itemRefs.current[zone][focusedIndex]
     el?.focus({ preventScroll: true })
 
-    const shelf = zone === 'continue' ? continueShelfRef.current : zone === 'apps' ? appsShelfRef.current : null
+    const shelf = zone === 'apps' ? appsShelfRef.current : null
     if (shelf && el) {
       const item = (el.parentElement ?? el) as HTMLElement
       const padding = window.innerWidth * 0.05
@@ -872,16 +995,29 @@ export function TvLauncher() {
 
     const stack = stackRef.current
     if (!stack) return
-    const section = zone === 'continue' ? continueSectionRef.current : zone === 'apps' || zone === 'appsControls' ? appsSectionRef.current : null
+    const section =
+      zone === 'continue'
+        ? continueSectionRef.current
+        : zone === 'taste'
+          ? tasteSectionRef.current
+          : zone === 'apps' || zone === 'appsControls'
+            ? appsSectionRef.current
+            : null
+    const anchorKey =
+      zone === 'continue'
+        ? 'continue'
+        : zone === 'taste'
+          ? 'taste'
+          : 'apps'
     const offset =
-      section && (zone === 'continue' || zone === 'apps' || zone === 'appsControls')
-        ? Math.max(0, section.offsetTop - window.innerHeight * shelfAnchor[zone === 'continue' ? 'continue' : 'apps'])
+      section && (zone === 'continue' || zone === 'taste' || zone === 'apps' || zone === 'appsControls')
+        ? Math.max(0, section.offsetTop - window.innerHeight * shelfAnchor[anchorKey])
         : 0
     stack.style.transform = `translate3d(0, ${-offset}px, 0)`
   }, [zone, focusedIndex, ready, appsList.length, continueItems.length, modalOpen, slide])
 
   useEffect(() => {
-    if (!settings.autoAdvanceHero || launch || heroSlides.length < 2 || zone === 'continue' || zone === 'apps' || zone === 'appsControls' || modalOpen) return
+    if (!settings.autoAdvanceHero || launch || heroSlides.length < 2 || zone === 'continue' || zone === 'taste' || zone === 'apps' || zone === 'appsControls' || modalOpen) return
     const id = window.setTimeout(() => changeSlide(1), SLIDE_MS)
     return () => window.clearTimeout(id)
   }, [slide, launch, changeSlide, heroSlides.length, zone, modalOpen, settings.autoAdvanceHero])
@@ -909,27 +1045,58 @@ export function TvLauncher() {
     if (slide >= heroSlides.length && heroSlides.length) setSlide(0)
   })
 
-  const browsing = zone === 'continue' || zone === 'apps' || zone === 'appsControls'
+  const browsing = zone === 'continue' || zone === 'taste' || zone === 'apps' || zone === 'appsControls'
   // Nothing behind a modal, the launch overlay or a backgrounded window needs to keep animating.
   const animationsPaused = modalOpen || Boolean(launch) || docHidden
 
+  const handleWheel = (e: React.WheelEvent<HTMLElement>) => {
+    if (modalOpen || launch || movingApp) return
+    if (Math.abs(e.deltaY) < 18) return
+    const now = Date.now()
+    if (now - wheelLockRef.current < 320) return
+    wheelLockRef.current = now
+    const currentIdx = activeZones.indexOf(zone)
+    if (e.deltaY > 0) {
+      const nextIdx = Math.min(activeZones.length - 1, currentIdx + 1)
+      if (activeZones[nextIdx]) setZone(activeZones[nextIdx])
+    } else {
+      const minIdx = activeZones.includes(homeZone) ? activeZones.indexOf(homeZone) : 0
+      const prevIdx = Math.max(minIdx, currentIdx - 1)
+      if (activeZones[prevIdx]) setZone(activeZones[prevIdx])
+    }
+  }
+
   if (!ready) return <main className="h-dvh w-full bg-black" />
+  const previewingTheme = isThemeModalOpen || isCreateModalOpen
   return (
     <main
+      onWheel={handleWheel}
       className="relative h-dvh w-full select-none overflow-hidden text-white"
-      style={{
-        backgroundColor: currentTheme.bg,
-        // @ts-expect-error CSS variables
-        '--tv-bg': currentTheme.bg,
-        '--tv-accent': currentTheme.accent,
-        '--tv-accent-text': currentTheme.accentText,
-        '--tv-glow': currentTheme.glow1,
-        '--tv-glow-2': currentTheme.glow2,
-        '--tv-glass': currentTheme.glassBg,
-        '--tv-glass-border': currentTheme.glassBorder,
-      }}
+      style={
+        previewingTheme
+          ? { backgroundColor: 'var(--tv-bg, #000000)' }
+          : {
+              backgroundColor: currentThemeTokens.bg,
+              // @ts-expect-error CSS variables
+              '--tv-bg': currentThemeTokens.bg,
+              '--tv-surface': currentThemeTokens.surface,
+              '--tv-surface-elevated': currentThemeTokens.surfaceElevated,
+              '--tv-accent': currentThemeTokens.accent,
+              '--tv-accent-2': currentThemeTokens.accent2,
+              '--tv-accent-text': currentThemeTokens.accentText,
+              '--tv-glow': currentThemeTokens.glow1,
+              '--tv-glow-2': currentThemeTokens.glow2,
+              '--tv-glass': currentThemeTokens.glass,
+              '--tv-glass-border': currentThemeTokens.glassBorder,
+              '--tv-glow-scale': String(currentThemeTokens.glowScale),
+            }
+      }
     >
-      <HeroBackdrop slides={heroSlides} activeIndex={slide} dimmed={browsing}
+      <HeroBackdrop
+        slides={heroSlides}
+        activeIndex={slide}
+        dimmed={browsing}
+        immersiveBackdrop={zone === 'taste' ? (tasteItems[Math.max(0, Math.min(tasteItems.length - 1, indices.taste))]?.image ?? null) : null}
         paused={animationsPaused}
         kenBurns={settings.kenBurns}
         liveWallpaper={settings.liveWallpaper}
@@ -946,15 +1113,16 @@ export function TvLauncher() {
         onHover={(i) => { if (pointerReadyRef.current) focusItem('nav', i) }}
         onActivate={(i) => activate('nav', i)}
         activeThemeName={currentTheme.name}
+        activeProfile={activeProfile}
+        networkConnected={data.network.connected}
         clock24h={settings.clock24h}
         showWeather={settings.showWeather}
-        currentTheme={currentTheme}
       />
 
       <div
         ref={stackRef}
         data-tv-paused={animationsPaused || undefined}
-        className="relative z-10 transition-transform duration-300 ease-out motion-reduce:transition-none"
+        className="relative z-10 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
       >
         <HeroInfo
           slides={heroSlides}
@@ -969,29 +1137,55 @@ export function TvLauncher() {
           onSelectSlide={setSlide}
         />
 
-        <div className="flex flex-col gap-[3vh] pt-[2vh]">
+        <div className="flex flex-col gap-[6.8vh] pt-[4vh] pb-[14vh]">
           {continueItems.length > 0 && (
             <ContinueWatchingRow
               items={continueItems}
-              focusedIndex={zone === 'continue' ? focusedIndex : -1}
+              activeIndex={indices.continue}
+              rowFocused={zone === 'continue'}
+              revealed={zone === 'continue' || zone === 'hero' || zone === 'taste'}
               sectionRef={continueSectionRef}
-              shelfRef={continueShelfRef}
               registerRef={registerContinue}
+              onSelect={selectContinue}
               onHover={hoverContinue}
               onActivate={activateContinue}
             />
           )}
+
+          <YourTasteRow
+            items={tasteItems}
+            activeIndex={indices.taste}
+            rowFocused={zone === 'taste'}
+            revealed={zone === 'taste' || zone === 'apps' || zone === 'appsControls'}
+            sectionRef={tasteSectionRef}
+            registerRef={registerTaste}
+            onSelect={selectTaste}
+            onHover={hoverTaste}
+            onActivate={activateTaste}
+          />
+
           <AppsRow
             apps={appsList}
             organize={organize}
             movingApp={movingApp}
-            onSetOrganize={(on) => { setOrganize(on); setMovingApp(false); if (on) focusItem('apps', Math.min(indices.apps, Math.max(0, appsList.length - 1))) }}
+            holdingIndex={holdingAppIndex}
+            rowActive={zone === 'apps'}
+            isNativeAppInfoAvailable={data.native}
+            onSetOrganize={(on) => {
+              setOrganize(on)
+              setMovingApp(false)
+              setHoldingAppIndex(null)
+              if (on) focusItem('apps', Math.min(indices.apps, Math.max(0, appsList.length - 1)))
+            }}
             hiddenCount={hiddenCount}
-            onMoveApp={moveApp}
+            onOpenAppInfo={(idx) => {
+              const targetId = appsList[idx]
+              const pkg = targetId ? appInfo(targetId).pkg : undefined
+              if (pkg && !openAppInfo(pkg)) setNotice({ key: Date.now(), text: 'Could not open app info' })
+            }}
             onResetApps={resetApps}
             onOpenAppsMenu={() => openAppsMenu()}
             onEditRow={openRowEditor}
-            currentTheme={currentTheme}
             focusedIndex={zone === 'apps' ? focusedIndex : -1}
             focusedControl={zone === 'appsControls' ? focusedIndex : -1}
             registerControlRef={register('appsControls')}
@@ -1001,6 +1195,9 @@ export function TvLauncher() {
             registerRef={registerApps}
             onHover={hoverApps}
             onActivate={activateApps}
+            onTilePointerDown={handleTilePointerDown}
+            onTilePointerUp={handleTilePointerUp}
+            onTilePointerCancel={clearPointerHold}
           />
         </div>
       </div>
@@ -1009,16 +1206,18 @@ export function TvLauncher() {
         {notice && (
           <p
             key={notice.key}
-            className="flex items-center gap-2 rounded-full bg-black/85 px-[1.5em] py-[0.7em] text-[clamp(12px,0.95vw,19px)] font-medium text-white ring-1 ring-inset ring-white/20 animate-in fade-in slide-in-from-bottom-2 duration-300 shadow-2xl"
-            style={{ boxShadow: '0 8px 30px var(--tv-glow, rgba(0,0,0,0.5))' }}
+            className="rounded-full px-[1.5em] py-[0.65em] text-[clamp(12px,0.9vw,18px)] font-medium text-white animate-in fade-in slide-in-from-bottom-2 duration-200"
+            style={{
+              backgroundColor: currentThemeTokens.surfaceElevated,
+              boxShadow: `inset 0 0 0 1px ${currentThemeTokens.glassBorder}, 0 12px 32px rgba(0,0,0,0.75), 0 0 24px ${currentThemeTokens.glow1}`,
+            }}
           >
-            <span className="size-2 rounded-full" style={{ backgroundColor: 'var(--tv-accent, #38bdf8)' }} />
             {notice.text}
           </p>
         )}
       </div>
 
-      {launch && <LaunchOverlay key={launch.key} launch={launch} onDismiss={() => {
+      {launch && <LaunchOverlay key={launch.key} launch={launch} currentTheme={currentTheme} onDismiss={() => {
         window.clearTimeout(launchTimerRef.current)
         launchRef.current = null
         setLaunch(null)
@@ -1028,10 +1227,13 @@ export function TvLauncher() {
         isOpen={isProfileModalOpen}
         profiles={profiles}
         activeId={activeProfileId}
+        themes={allThemes}
+        currentTheme={currentTheme}
         onClose={() => setIsProfileModalOpen(false)}
         onSwitch={handleSwitchProfile}
         onAdd={handleAddProfile}
         onRename={handleRenameProfile}
+        onUpdateColor={handleUpdateProfileColor}
         onDelete={handleDeleteProfile}
         onRestoreHidden={handleRestoreProfileHidden}
       />
@@ -1047,7 +1249,6 @@ export function TvLauncher() {
           setIsCreateModalOpen(true)
         }}
         onDeleteCustomTheme={handleDeleteCustomTheme}
-        currentTheme={currentTheme}
       />
 
       {isSettingsOpen && <SettingsModal
@@ -1109,6 +1310,7 @@ export function TvLauncher() {
 
       <SurfsharkModal
         isOpen={isSurfsharkOpen}
+        currentTheme={currentTheme}
         onClose={() => setIsSurfsharkOpen(false)}
         onOpen={() => {
           setIsSurfsharkOpen(false)

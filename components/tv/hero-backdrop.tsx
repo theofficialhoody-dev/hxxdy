@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import Image from 'next/image'
+import { AnimatePresence, motion } from 'motion/react'
 import { cn } from '@/lib/utils'
 import type { HeroSlide } from '@/lib/launcher-data'
 
@@ -9,6 +10,7 @@ export function HeroBackdrop({
   slides,
   activeIndex,
   dimmed,
+  immersiveBackdrop = null,
   kenBurns = true,
   liveWallpaper = true,
   paused = false,
@@ -16,13 +18,15 @@ export function HeroBackdrop({
   slides: HeroSlide[]
   activeIndex: number
   dimmed: boolean
+  immersiveBackdrop?: string | null
   kenBurns?: boolean
   liveWallpaper?: boolean
   paused?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const immersiveActive = Boolean(immersiveBackdrop)
 
-  // Manage video playback based on whether user is browsing continue watching / my apps
+  // Manage video playback based on whether user is browsing continue watching / my apps (paused during immersive list)
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
@@ -30,7 +34,7 @@ export function HeroBackdrop({
     video.defaultMuted = true
     video.muted = true
 
-    if (dimmed && liveWallpaper !== false && !paused) {
+    if (dimmed && liveWallpaper !== false && !paused && !immersiveActive) {
       const playPromise = video.play()
       if (playPromise !== undefined) {
         playPromise.catch(() => {
@@ -40,7 +44,7 @@ export function HeroBackdrop({
     } else {
       video.pause()
     }
-  }, [dimmed, liveWallpaper, paused])
+  }, [dimmed, liveWallpaper, paused, immersiveActive])
 
   return (
     <div className="absolute inset-0 overflow-hidden" aria-hidden="true" data-tv-paused={paused || undefined}>
@@ -55,7 +59,7 @@ export function HeroBackdrop({
             key={slide.id}
             className={cn(
               'absolute inset-0 transition-opacity duration-500 ease-out',
-              active ? 'opacity-100' : 'opacity-0',
+              active && !immersiveActive ? 'opacity-100' : 'opacity-0',
             )}
           >
             <Image
@@ -73,70 +77,76 @@ export function HeroBackdrop({
         )
       })}
 
-      {/* Hero Vignette Gradients */}
-      <div className="absolute inset-x-0 top-0 h-[28vh] bg-gradient-to-b from-black/55 to-transparent" />
-      <div className="absolute inset-y-0 left-0 w-[65vw] bg-gradient-to-r from-black/75 via-black/35 to-transparent" />
-      <div className="absolute inset-x-0 bottom-0 h-[75vh] bg-gradient-to-t from-black via-black/55 to-transparent" />
-
-      {/* Thematic Ambient Aura Layers - Optimized for Mali GPU without blend-mode readbacks */}
+      {/* Hero Vignette Gradients — balanced to let hero artwork breathe while keeping bottom-left text crisp */}
+      <div className="absolute inset-x-0 top-0 h-[20vh] bg-gradient-to-b from-black/42 to-transparent" />
+      <div className="absolute inset-y-0 left-0 w-[54vw] bg-gradient-to-r from-black/58 via-black/20 to-transparent" />
       <div
-        className="pointer-events-none absolute inset-0"
+        className="absolute inset-x-0 bottom-0 h-[52vh]"
         style={{
+          background: 'linear-gradient(to top, var(--tv-bg, #000000) 0%, rgba(0,0,0,0.48) 38%, transparent 100%)',
+        }}
+      />
+
+      {/* Thematic Ambient Aura Layers scaled by Theme Studio intensity */}
+      <div
+        className="pointer-events-none absolute inset-0 transition-opacity duration-300"
+        style={{
+          opacity: 'calc(0.85 * var(--tv-glow-scale, 1))',
           background: `
-            radial-gradient(ellipse 85% 60% at 70% 25%, var(--tv-glow, rgba(56, 189, 248, 0.22)), transparent 65%),
-            radial-gradient(ellipse 70% 50% at 15% 80%, var(--tv-glow-2, rgba(59, 130, 246, 0.15)), transparent 70%)
+            radial-gradient(ellipse 85% 60% at 70% 25%, var(--tv-glow, rgba(56, 189, 248, 0.24)), transparent 65%),
+            radial-gradient(ellipse 70% 50% at 15% 80%, var(--tv-glow-2, rgba(99, 102, 241, 0.18)), transparent 70%)
           `,
         }}
       />
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          background: 'radial-gradient(circle at 50% 50%, transparent 45%, var(--tv-bg, #000000) 100%)',
-          opacity: 0.75,
+          background: 'radial-gradient(circle at 50% 50%, transparent 55%, var(--tv-bg, #000000) 100%)',
+          opacity: 0.45,
         }}
       />
 
       {/* Lightweight Edge Vignette */}
       <div
-        className="pointer-events-none absolute inset-0 bg-radial from-transparent via-transparent to-black/60"
+        className="pointer-events-none absolute inset-0 bg-radial from-transparent via-transparent to-black/35"
       />
 
       {/* Only mounted when enabled so the video decoder isn't initialised for nothing. */}
       {liveWallpaper !== false && (
         <>
-      {/* Secondary Live Wallpaper: Goku Black Super Saiyan Rosé (plays when scrolling down to Continue Watching & My Apps) */}
-      <div
-        className={cn(
-          'absolute inset-0 transition-opacity duration-500 ease-out overflow-hidden',
-          dimmed ? 'opacity-100' : 'opacity-0 pointer-events-none',
-        )}
-      >
-        <video
-          ref={videoRef}
-          loop
-          muted
-          playsInline
-          preload="metadata"
-          poster="/assets/aistudio/goku-black-poster.jpg"
-          className="absolute inset-0 h-full w-full object-cover filter brightness-95 contrast-105"
-        >
-          <source src="/assets/aistudio/goku-black-wallpaper.mp4" type="video/mp4" />
-        </video>
+          {/* Secondary Live Wallpaper: Goku Black Super Saiyan Rosé (plays when scrolling down to Continue Watching & My Apps) */}
+          <div
+            className={cn(
+              'absolute inset-0 overflow-hidden transition-opacity duration-500 ease-out',
+              dimmed && !immersiveActive ? 'opacity-100' : 'pointer-events-none opacity-0',
+            )}
+          >
+            <video
+              ref={videoRef}
+              loop
+              muted
+              playsInline
+              preload="metadata"
+              poster="/assets/aistudio/goku-black-poster.jpg"
+              className="absolute inset-0 h-full w-full object-cover filter brightness-95 contrast-105"
+            >
+              <source src="/assets/aistudio/goku-black-wallpaper.mp4" type="video/mp4" />
+            </video>
 
-        {/* Cinematic Backdrop Scrim Overlays: Balanced for maximum wallpaper visibility and card text legibility */}
-        <div className="absolute inset-0 bg-black/25" />
-        <div className="absolute inset-x-0 top-0 h-[22vh] bg-gradient-to-b from-black/75 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-[48vh] bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: `
-              radial-gradient(circle at 50% 45%, transparent 35%, rgba(0, 0, 0, 0.35) 100%),
-              radial-gradient(ellipse 90% 60% at 50% 85%, var(--tv-glow, transparent), transparent 70%)
-            `,
-          }}
-        />
-      </div>
+            {/* Cinematic Backdrop Scrim Overlays: Balanced for maximum wallpaper visibility and card text legibility */}
+            <div className="absolute inset-0 bg-black/25" />
+            <div className="absolute inset-x-0 top-0 h-[22vh] bg-gradient-to-b from-black/75 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-[48vh] bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background: `
+                  radial-gradient(circle at 50% 45%, transparent 35%, rgba(0, 0, 0, 0.35) 100%),
+                  radial-gradient(ellipse 90% 60% at 50% 85%, var(--tv-glow, transparent), transparent 70%)
+                `,
+              }}
+            />
+          </div>
         </>
       )}
 
@@ -144,10 +154,66 @@ export function HeroBackdrop({
       <div
         className={cn(
           'absolute inset-0 transition-opacity duration-500 ease-out',
-          dimmed && liveWallpaper === false ? 'opacity-65' : 'opacity-0',
+          dimmed && !immersiveActive && liveWallpaper === false ? 'opacity-65' : 'pointer-events-none opacity-0',
         )}
         style={{ backgroundColor: 'var(--tv-bg, #000000)' }}
       />
+
+      {/* Android TV Immersive List Full-Viewport Backdrop (opaque base completely blocks underlying backgrounds) */}
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-0 overflow-hidden transition-opacity duration-500 ease-out',
+          immersiveActive ? 'opacity-100' : 'opacity-0',
+        )}
+        style={{ backgroundColor: 'var(--tv-bg, #000000)' }}
+      >
+        <AnimatePresence mode="sync">
+          {immersiveBackdrop && (
+            <motion.div
+              key={immersiveBackdrop}
+              initial={{ opacity: 0, scale: 1.02 }}
+              animate={{ opacity: 1, scale: 1.06 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                opacity: { duration: 0.45, ease: [0.22, 1, 0.36, 1] },
+                scale: { duration: 10, ease: 'easeOut' },
+              }}
+              className="absolute inset-0 will-change-transform"
+            >
+              <Image
+                src={immersiveBackdrop}
+                alt=""
+                fill
+                sizes="100vw"
+                referrerPolicy="no-referrer"
+                className="object-cover object-center brightness-[0.84] saturate-[1.08]"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Immersive Stage Scrims & Theme Studio Accent Aura */}
+        <div className="absolute inset-0 bg-black/44" />
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `
+              radial-gradient(ellipse 85% 68% at 50% 42%, rgba(0,0,0,0.12) 0%, rgba(0,0,0,0.68) 100%),
+              linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.18) 28%, rgba(0,0,0,0.22) 68%, var(--tv-bg, #000000) 100%)
+            `,
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            opacity: 'calc(0.75 * var(--tv-glow-scale, 1))',
+            background: `
+              radial-gradient(ellipse 68% 52% at 50% 24%, var(--tv-glow, rgba(56,189,248,0.2)), transparent 70%),
+              radial-gradient(ellipse 58% 46% at 50% 80%, var(--tv-glow-2, rgba(99,102,241,0.16)), transparent 72%)
+            `,
+          }}
+        />
+      </div>
     </div>
   )
 }

@@ -61,13 +61,17 @@ export function StatusClock({
       let nextRefresh = Date.now() + 5 * 60 * 1000
       try {
         const response = await fetch('/__weather', { cache: 'no-store' })
-        const data = await response.json() as Weather & { refreshAt?: number; retryAt?: number }
+        const data = (await response.json()) as Weather & { refreshAt?: number; retryAt?: number }
         if (!response.ok) {
           if (Number.isFinite(data.retryAt)) nextRefresh = data.retryAt!
           throw new Error('Weather unavailable')
         }
-        if (!Number.isFinite(data.temperature) || !Number.isInteger(data.code) ||
-            typeof data.isDay !== 'boolean' || !Number.isFinite(data.refreshAt)) {
+        if (
+          !Number.isFinite(data.temperature) ||
+          !Number.isInteger(data.code) ||
+          typeof data.isDay !== 'boolean' ||
+          !Number.isFinite(data.refreshAt)
+        ) {
           throw new Error('Invalid weather')
         }
         nextRefresh = data.refreshAt!
@@ -99,20 +103,23 @@ export function StatusClock({
   }, [clock24h])
 
   return (
-    <div className="flex items-center gap-[1.1vw] text-[clamp(14px,1.1vw,24px)] font-medium tabular-nums text-white/90 [text-shadow:0_1px_12px_rgba(0,0,0,0.5)]">
+    <div className="flex items-center gap-[1vw] text-[clamp(16px,1.3vw,26px)] font-medium tabular-nums text-white/95 [text-shadow:0_2px_14px_rgba(0,0,0,0.7)]">
       {showWeather && weather && appearance && (
         <>
-          <span className="flex items-center gap-[0.4em]" aria-label={`${appearance.label}, ${Math.round(weather.temperature)} degrees Fahrenheit`}>
-            <appearance.Icon className="size-[1.15em]" strokeWidth={1.5} aria-hidden="true" />
+          <span
+            className="flex items-center gap-[0.4em]"
+            aria-label={`${appearance.label}, ${Math.round(weather.temperature)} degrees Fahrenheit`}
+          >
+            <appearance.Icon className="size-[1.15em]" strokeWidth={1.65} aria-hidden="true" />
             <span>{Math.round(weather.temperature)}°</span>
           </span>
-          <span className="h-[1em] w-px bg-white/30" aria-hidden="true" />
+          <span className="h-[0.95em] w-px bg-white/25" aria-hidden="true" />
         </>
       )}
       <time suppressHydrationWarning className="inline-flex items-baseline font-semibold tracking-tight text-white">
         <span>{timeState.time}</span>
         {timeState.period && (
-          <span className="ml-[0.3em] text-[0.72em] font-medium text-white/75">
+          <span className="ml-[0.3em] text-[0.7em] font-medium tracking-wide text-white/75">
             {timeState.period}
           </span>
         )}

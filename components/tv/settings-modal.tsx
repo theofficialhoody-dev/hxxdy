@@ -2,29 +2,28 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  Check,
   ChevronRight,
-  Clock,
-  Cpu,
-  Globe,
-  HardDrive,
   Info,
   LayoutGrid,
   Monitor,
   RefreshCw,
   RotateCcw,
   Sliders,
-  Tv,
   User,
   Volume2,
   Wifi,
+  X,
+  type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-import type { ThemeConfig } from '@/lib/theme-data'
+import { colorWithAlpha, resolveThemeTokens, type ThemeConfig } from '@/lib/theme-data'
 import { FlowFill } from './flow-fill'
 import { getDisplayInfo, getNetwork, type DisplayInfo, type NetworkInfo } from '@/lib/native-bridge'
-import { getLastNavigationSoundVolume, getNavigationSoundVolume, setNavigationSoundVolume } from '@/lib/navigation-sounds'
+import {
+  getLastNavigationSoundVolume,
+  getNavigationSoundVolume,
+  setNavigationSoundVolume,
+} from '@/lib/navigation-sounds'
 
 export type LauncherSettings = {
   kenBurns: boolean
@@ -86,14 +85,49 @@ type SettingsModalProps = {
 
 type TabCategory = 'display' | 'launcher' | 'audio' | 'apps' | 'network' | 'system'
 
-const TABS: { id: TabCategory; label: string; icon: any; summary: string }[] = [
-  { id: 'display', label: 'Display & Video', icon: Monitor, summary: 'Display mode, HDR & Motion' },
-  { id: 'launcher', label: 'Launcher Preferences', icon: Sliders, summary: 'Carousel, Clock & Weather' },
-  { id: 'audio', label: 'Audio & Sound', icon: Volume2, summary: 'Launcher sounds & Android audio' },
-  { id: 'apps', label: 'Apps & Storage', icon: LayoutGrid, summary: 'App Order & 16GB Storage' },
-  { id: 'network', label: 'Network & Account', icon: Wifi, summary: 'Connection & profiles' },
-  { id: 'system', label: 'System & About', icon: Info, summary: 'onn. 4K Plus Specifications' },
+const TABS: { id: TabCategory; label: string; icon: LucideIcon; summary: string }[] = [
+  { id: 'display', label: 'Display & Video', icon: Monitor, summary: 'Display mode, HDR & motion' },
+  { id: 'launcher', label: 'Launcher Preferences', icon: Sliders, summary: 'Carousel, clock & weather' },
+  { id: 'audio', label: 'Audio & Sound', icon: Volume2, summary: 'Navigation audio & output' },
+  { id: 'apps', label: 'Apps & Storage', icon: LayoutGrid, summary: 'Home row order & storage' },
+  { id: 'network', label: 'Network & Account', icon: Wifi, summary: 'Connectivity & profiles' },
+  { id: 'system', label: 'System & About', icon: Info, summary: 'Device & launcher info' },
 ]
+
+function ToggleSwitch({
+  checked,
+  accent,
+  glow,
+}: {
+  checked: boolean
+  accent: string
+  glow: string
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ring-1 ring-inset',
+        checked ? 'ring-transparent' : 'bg-white/12 ring-white/15',
+      )}
+      style={
+        checked
+          ? {
+              backgroundColor: accent,
+              boxShadow: `0 0 14px ${glow}`,
+            }
+          : undefined
+      }
+    >
+      <span
+        className={cn(
+          'size-5 rounded-full bg-white shadow-md transition-transform duration-200 ease-out',
+          checked ? 'translate-x-5' : 'translate-x-0 opacity-80',
+        )}
+      />
+    </span>
+  )
+}
 
 export function SettingsModal({
   isOpen,
@@ -125,7 +159,6 @@ export function SettingsModal({
   const lastSoundVolume = useRef(25)
 
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
-  const contentRefs = useRef<(HTMLButtonElement | null)[]>([])
   const contentPanelRef = useRef<HTMLDivElement>(null)
 
   const contentItems = () => {
@@ -174,6 +207,26 @@ export function SettingsModal({
     }
   }
 
+  const handleClearTemporaryCache = () => {
+    try {
+      sessionStorage.clear()
+      const preservedPrefixes = [
+        'tv_launcher_',
+        'tv_custom_themes',
+        'launcher_',
+      ]
+      const keysToRemove: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && !preservedPrefixes.some((prefix) => key.startsWith(prefix))) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key))
+    } catch {}
+    setCacheCleared(true)
+  }
+
   useEffect(() => {
     if (!isOpen || activeTab !== 'display') return
     const refresh = () => setDisplay(native ? getDisplayInfo() : null)
@@ -211,8 +264,13 @@ export function SettingsModal({
         return
       }
 
-      const soundControl = document.activeElement instanceof HTMLElement && document.activeElement.dataset.launcherSound === 'true'
-      if (soundControl && (key === 'ArrowLeft' || key === 'ArrowRight' || code === 21 || code === 22 || code === 37 || code === 39)) {
+      const soundControl =
+        document.activeElement instanceof HTMLElement &&
+        document.activeElement.dataset.launcherSound === 'true'
+      if (
+        soundControl &&
+        (key === 'ArrowLeft' || key === 'ArrowRight' || code === 21 || code === 22 || code === 37 || code === 39)
+      ) {
         e.preventDefault()
         updateSoundVolume(soundVolume + (key === 'ArrowLeft' || code === 21 || code === 37 ? -10 : 10))
         return
@@ -256,7 +314,11 @@ export function SettingsModal({
           const items = contentItems()
           const next = Math.min(Math.max(0, items.length - 1), contentIndex + 1)
           const panel = contentPanelRef.current
-          if (contentIndex === items.length - 1 && panel && panel.scrollTop + panel.clientHeight < panel.scrollHeight - 1) {
+          if (
+            contentIndex === items.length - 1 &&
+            panel &&
+            panel.scrollTop + panel.clientHeight < panel.scrollHeight - 1
+          ) {
             panel.scrollTop += panel.clientHeight * 0.6
           } else setContentIndex(next)
         }
@@ -295,54 +357,84 @@ export function SettingsModal({
     saveStoredSettings(updated)
   }
 
+  const tokens = resolveThemeTokens(currentTheme)
+
+  const rowButtonClass =
+    'group flex w-full items-center justify-between gap-4 rounded-2xl border border-[var(--tv-glass-border)] bg-[var(--tv-glass)] p-4 text-left outline-none transition-all duration-150 hover:bg-white/[0.08] focus:border-[var(--tv-accent)] focus:bg-[var(--tv-surface-elevated)] focus:shadow-[0_0_24px_var(--tv-glow)]'
+
+  const actionButtonClass =
+    'inline-flex items-center gap-2 rounded-full border border-[var(--tv-glass-border)] bg-[var(--tv-glass)] px-4 py-2 text-xs font-semibold text-white outline-none transition-all duration-150 hover:bg-white/20 focus:scale-[1.03] focus:border-[var(--tv-accent)] focus:bg-[var(--tv-accent)] focus:text-[var(--tv-accent-text)] focus:shadow-[0_0_20px_var(--tv-glow)]'
+
+  const infoCardClass =
+    'rounded-2xl border border-[var(--tv-glass-border)] bg-[var(--tv-glass)]'
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
-      className="tv-menu-focus fixed inset-0 z-50 flex items-center justify-center p-[3.5vw] backdrop-blur-xl animate-in fade-in duration-200 text-white select-none"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+      className="tv-menu-focus fixed inset-0 z-50 flex items-center justify-center p-[3.5vw] text-white select-none animate-in fade-in duration-200"
       style={{
-        backgroundColor: 'rgba(0, 0, 0, 0.88)',
-        background: `radial-gradient(ellipse 90% 60% at 50% 10%, ${currentTheme.glow1}, transparent 75%), rgba(0, 0, 0, 0.88)`,
-        // @ts-expect-error CSS variable
-        '--tv-accent': currentTheme.accent,
-        '--tv-accent-text': currentTheme.accentText,
-        '--tv-glow': currentTheme.glow1,
+        background: `
+          radial-gradient(ellipse 90% 60% at 50% 10%, ${tokens.glow1}, transparent 75%),
+          radial-gradient(ellipse 70% 50% at 20% 90%, ${tokens.glow2}, transparent 75%),
+          ${colorWithAlpha(tokens.bg, 0.90)}
+        `,
+        // @ts-expect-error CSS variables
+        '--tv-bg': tokens.bg,
+        '--tv-surface': tokens.surface,
+        '--tv-surface-elevated': tokens.surfaceElevated,
+        '--tv-accent': tokens.accent,
+        '--tv-accent-2': tokens.accent2,
+        '--tv-accent-text': tokens.accentText,
+        '--tv-glow': tokens.glow1,
+        '--tv-glow-2': tokens.glow2,
+        '--tv-glass': tokens.glass,
+        '--tv-glass-border': tokens.glassBorder,
+        '--tv-glow-scale': String(tokens.glowScale),
       }}
     >
       <div
-        className="relative flex h-[82vh] w-full max-w-5xl overflow-hidden rounded-3xl shadow-[0_24px_80px_rgba(0,0,0,0.9)] border"
+        className="relative flex h-[82vh] w-full max-w-5xl overflow-hidden rounded-[28px] border"
         style={{
-          backgroundColor: currentTheme.bg || '#0a0a0f',
-          borderColor: currentTheme.glassBorder || 'rgba(255, 255, 255, 0.15)',
-          boxShadow: `0 24px 80px rgba(0,0,0,0.85), 0 0 40px ${currentTheme.glow1}`,
+          backgroundColor: tokens.surface,
+          borderColor: tokens.glassBorder,
+          boxShadow: `0 28px 90px rgba(0,0,0,0.92), 0 0 48px ${tokens.glow1}`,
         }}
       >
         {/* Left Side: System Categories Navigation */}
-        <aside className="flex min-h-0 w-[35%] flex-col border-r border-white/10 bg-black/60 p-[2vw]">
-          <div className="flex items-center gap-3 pb-5 border-b border-white/10">
+        <aside
+          className="flex min-h-0 w-[34%] flex-col border-r p-[2vw]"
+          style={{
+            borderColor: tokens.glassBorder,
+            backgroundColor: colorWithAlpha(tokens.bg, 0.55),
+          }}
+        >
+          <div className="flex items-center gap-3 pb-5 border-b" style={{ borderColor: tokens.glassBorder }}>
             <div
-              className="grid size-11 place-items-center rounded-2xl shadow-lg transition-colors"
+              className="grid size-11 shrink-0 place-items-center rounded-2xl shadow-lg"
               style={{
-                backgroundColor: currentTheme.accent,
-                color: currentTheme.accentText || '#ffffff',
-                boxShadow: `0 4px 16px ${currentTheme.glow1}`,
+                backgroundColor: tokens.accent,
+                color: tokens.accentText,
+                boxShadow: `0 4px 18px ${tokens.glow1}`,
               }}
             >
               <Sliders className="size-5" />
             </div>
-            <div>
-              <h2 id="settings-title" className="text-[clamp(17px,1.25vw,23px)] font-bold tracking-tight text-white">
+            <div className="min-w-0">
+              <h2 id="settings-title" className="truncate text-[clamp(17px,1.25vw,23px)] font-bold tracking-tight text-white">
                 Launcher Settings
               </h2>
-              <p className="text-[clamp(11px,0.75vw,14px)] text-white/50">
-                System & Device Preferences
+              <p className="truncate text-[clamp(11px,0.75vw,14px)] text-white/55">
+                System & device preferences
               </p>
             </div>
           </div>
 
-          {/* Categories List */}
-          <nav aria-label="Settings Categories" className="no-scrollbar min-h-0 flex-1 overflow-y-auto flex flex-col gap-1.5 px-4 pt-5 pb-5">
+          <nav aria-label="Settings Categories" className="no-scrollbar min-h-0 flex-1 overflow-y-auto flex flex-col gap-1.5 pt-4 pb-4">
             {TABS.map((tab, idx) => {
               const Icon = tab.icon
               const isSelected = activeTab === tab.id
@@ -363,46 +455,44 @@ export function SettingsModal({
                     if (contentPanelRef.current) contentPanelRef.current.scrollTop = 0
                   }}
                   className={cn(
-                    'flex shrink-0 items-center justify-between rounded-xl px-3.5 py-3 text-left text-[clamp(13px,0.9vw,17px)] font-semibold transition-all duration-200 outline-none backdrop-blur-md',
+                    'flex shrink-0 items-center justify-between rounded-2xl border px-3.5 py-3 text-left text-[clamp(13px,0.9vw,17px)] font-semibold transition-all duration-150 outline-none',
                     isFocused
-                      ? 'scale-102 bg-white/20 text-white'
+                      ? 'scale-[1.015] border-[var(--tv-accent)] bg-white/15 text-white'
                       : isSelected
-                        ? 'bg-white/10 text-white'
-                        : 'text-white/70 hover:bg-white/10 hover:text-white',
+                        ? 'border-[var(--tv-glass-border)] bg-[var(--tv-glass)] text-white'
+                        : 'border-transparent text-white/70 hover:bg-white/8 hover:text-white',
                   )}
                   style={
-                    isFocused || isSelected
-                      ? {
-                          boxShadow: isFocused ? `0 0 20px ${currentTheme.glow1}` : undefined,
-                        }
+                    isFocused
+                      ? { boxShadow: `0 0 22px ${tokens.glow1}` }
                       : undefined
                   }
                 >
-                  <div className="flex items-center gap-3 truncate">
+                  <div className="flex items-center gap-3 min-w-0">
                     <Icon
                       className="size-4 shrink-0 transition-colors"
-                      style={isSelected || isFocused ? { color: currentTheme.accent } : undefined}
+                      style={isSelected || isFocused ? { color: tokens.accent } : undefined}
                     />
-                    <div className="truncate">
+                    <div className="min-w-0">
                       <span className="block truncate text-white">{tab.label}</span>
-                      <span className={cn('text-[10px] font-normal block truncate', isFocused ? 'text-white/80' : 'text-white/40')}>
+                      <span
+                        className={cn(
+                          'block truncate text-[11px] font-normal',
+                          isFocused ? 'text-white/80' : 'text-white/45',
+                        )}
+                      >
                         {tab.summary}
                       </span>
                     </div>
                   </div>
                   <ChevronRight
-                    className="size-4 opacity-50 shrink-0 ml-1 transition-colors"
-                    style={isSelected ? { color: currentTheme.accent } : undefined}
+                    className="size-4 shrink-0 ml-1.5 opacity-55 transition-colors"
+                    style={isSelected ? { color: tokens.accent } : undefined}
                   />
                 </button>
               )
             })}
           </nav>
-
-          {/* D-Pad Remote Legend */}
-          <div className="mt-auto pt-4 border-t border-white/10 text-[clamp(10px,0.7vw,13px)] text-white/40">
-            <span>▲ / ▼ Scroll · ► Options · [Back] Categories / Exit</span>
-          </div>
         </aside>
 
         {/* Right Side: Options Panel */}
@@ -416,427 +506,439 @@ export function SettingsModal({
           }}
           className="flex min-h-0 min-w-0 flex-1 flex-col p-[2vw]"
         >
-          {/* Header */}
-          <div className="flex shrink-0 items-center justify-between pb-4 border-b border-white/10">
-            <div>
-              <h3 className="text-[clamp(18px,1.4vw,26px)] font-bold text-white capitalize">
+          <div className="flex shrink-0 items-center justify-between gap-4 border-b pb-4" style={{ borderColor: tokens.glassBorder }}>
+            <div className="min-w-0">
+              <h3 className="text-[clamp(18px,1.4vw,26px)] font-bold tracking-tight text-white">
                 {TABS.find((t) => t.id === activeTab)?.label}
               </h3>
               <p className="text-[clamp(11px,0.8vw,15px)] text-white/60">
                 {TABS.find((t) => t.id === activeTab)?.summary}
               </p>
             </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close settings"
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-[var(--tv-glass-border)] bg-[var(--tv-glass)] text-white/80 outline-none transition-all hover:bg-white/20 hover:text-white focus:border-[var(--tv-accent)] focus:shadow-[0_0_16px_var(--tv-glow)]"
+            >
+              <X className="size-4" />
+            </button>
           </div>
 
           <div
             ref={contentPanelRef}
-            className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pt-5 pb-8"
+            className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-1 pt-5 pb-6"
           >
-          {/* Category 1: Display & Video */}
-          {activeTab === 'display' && (
-            <div className="flex flex-col gap-3.5">
-              <div className="flex items-center justify-between rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div>
-                  <span className="text-base font-bold text-white block">Ken Burns Cinematic Pan</span>
-                  <span className="text-xs text-white/60 block mt-0.5">
-                    Subtly zooms hero slide backdrops for atmospheric theater motion.
-                  </span>
-                </div>
+            {/* Category 1: Display & Video */}
+            {activeTab === 'display' && (
+              <div className="flex flex-col gap-3">
                 <button
-                  ref={(el) => {
-                    contentRefs.current[0] = el
-                  }}
                   type="button"
+                  role="switch"
+                  aria-checked={settings.kenBurns}
                   onClick={() => toggleSetting('kenBurns')}
-                  className={cn(
-                    'rounded-full px-4 py-1.5 text-xs font-bold transition-all outline-none focus:ring-2 focus:ring-white focus:scale-105 shadow-sm',
-                    !settings.kenBurns && 'bg-white/10 text-white/60 hover:bg-white/20',
-                  )}
-                  style={
-                    settings.kenBurns
-                      ? {
-                          backgroundColor: currentTheme.accent,
-                          color: currentTheme.accentText || '#ffffff',
-                          boxShadow: `0 4px 14px ${currentTheme.glow1}`,
-                        }
-                      : undefined
-                  }
+                  className={rowButtonClass}
                 >
-                  {settings.kenBurns ? 'Enabled' : 'Disabled'}
+                  <div>
+                    <span className="block text-sm font-semibold text-white">Ken Burns Cinematic Pan</span>
+                    <span className="mt-0.5 block text-xs text-white/60">
+                      Subtly zooms hero slide backdrops for atmospheric theater motion.
+                    </span>
+                  </div>
+                  <ToggleSwitch
+                    checked={settings.kenBurns}
+                    accent={tokens.accent}
+                    glow={tokens.glow1}
+                  />
                 </button>
-              </div>
 
-              <div className="flex items-center justify-between rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div>
-                  <span className="text-base font-bold text-white block">Secondary Live Wallpaper</span>
-                  <span className="text-xs text-white/60 block mt-0.5">
-                    Plays Goku Black Super Saiyan Rosé animated video when browsing shelves.
-                  </span>
-                </div>
                 <button
-                  ref={(el) => {
-                    contentRefs.current[1] = el
-                  }}
                   type="button"
+                  role="switch"
+                  aria-checked={settings.liveWallpaper}
                   onClick={() => toggleSetting('liveWallpaper')}
-                  className={cn(
-                    'rounded-full px-4 py-1.5 text-xs font-bold transition-all outline-none focus:ring-2 focus:ring-white focus:scale-105 shadow-sm',
-                    !settings.liveWallpaper && 'bg-white/10 text-white/60 hover:bg-white/20',
-                  )}
-                  style={
-                    settings.liveWallpaper
-                      ? {
-                          backgroundColor: currentTheme.accent,
-                          color: currentTheme.accentText || '#ffffff',
-                          boxShadow: `0 4px 14px ${currentTheme.glow1}`,
-                        }
-                      : undefined
-                  }
+                  className={rowButtonClass}
                 >
-                  {settings.liveWallpaper ? 'Enabled' : 'Disabled'}
+                  <div>
+                    <span className="block text-sm font-semibold text-white">Secondary Live Wallpaper</span>
+                    <span className="mt-0.5 block text-xs text-white/60">
+                      Plays animated ambient backdrop video when browsing shelves.
+                    </span>
+                  </div>
+                  <ToggleSwitch
+                    checked={settings.liveWallpaper}
+                    accent={tokens.accent}
+                    glow={tokens.glow1}
+                  />
                 </button>
-              </div>
 
-              <div className="flex items-center justify-between rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div>
-                  <span className="text-base font-bold text-white block">Current display mode</span>
-                  <span className="text-xs text-white/60 block mt-0.5">
-                    Physical output mode reported by Android.
+                <div className={cn(infoCardClass, 'flex items-center justify-between gap-4 p-4')}>
+                  <div>
+                    <span className="block text-sm font-semibold text-white">Current Display Mode</span>
+                    <span className="mt-0.5 block text-xs text-white/55">
+                      Physical output mode reported by Android.
+                    </span>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-full border border-[var(--tv-glass-border)] bg-black/35 px-3.5 py-1 text-xs font-semibold tabular-nums"
+                    style={{ color: tokens.accent }}
+                  >
+                    {display?.available && display.width && display.height && display.refreshRate
+                      ? `${display.width} × ${display.height} · ${Number(display.refreshRate.toFixed(2))} Hz`
+                      : 'Unavailable'}
                   </span>
                 </div>
-                <span
-                  className="rounded-full bg-white/10 px-3.5 py-1 text-xs font-mono font-bold"
-                  style={{ color: currentTheme.accent }}
-                >
-                  {display?.available && display.width && display.height && display.refreshRate
-                    ? `${display.width} × ${display.height} · ${Number(display.refreshRate.toFixed(2))} Hz`
-                    : 'Unavailable'}
-                </span>
-              </div>
 
-              <div className="flex items-center justify-between rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div>
-                  <span className="text-base font-bold text-white block">Supported HDR formats</span>
-                  <span className="text-xs text-white/60 block mt-0.5">
-                    Reported display capabilities, not necessarily the active video format.
+                <div className={cn(infoCardClass, 'flex items-center justify-between gap-4 p-4')}>
+                  <div>
+                    <span className="block text-sm font-semibold text-white">Supported HDR Formats</span>
+                    <span className="mt-0.5 block text-xs text-white/55">
+                      Reported panel capabilities, independent of active video playback.
+                    </span>
+                  </div>
+                  <span className="max-w-[50%] text-right text-xs font-medium text-white/80">
+                    {!display?.available
+                      ? 'Unavailable'
+                      : display.hdrTypes?.length
+                        ? display.hdrTypes.join(' · ')
+                        : 'None reported'}
                   </span>
                 </div>
-                <span className="max-w-[50%] text-right text-xs font-semibold text-white/80">
-                  {!display?.available ? 'Unavailable' : display.hdrTypes?.length ? display.hdrTypes.join(' · ') : 'None reported'}
-                </span>
-              </div>
-              {onOpenDisplaySettings && (
-                <button type="button" onClick={onOpenDisplaySettings} className="self-start rounded-full bg-white/10 px-5 py-2.5 text-sm font-semibold text-white">
-                  Open Android settings
-                </button>
-              )}
-            </div>
-          )}
 
-          {/* Category 2: Launcher Preferences */}
-          {activeTab === 'launcher' && (
-            <div className="flex flex-col gap-3.5">
-              <div className="flex items-center justify-between rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div>
-                  <span className="text-base font-bold text-white block">Auto-Advance Featured Carousel</span>
-                  <span className="text-xs text-white/60 block mt-0.5">
-                    Automatically rotates hero titles every 9 seconds when idle.
-                  </span>
-                </div>
+                {onOpenDisplaySettings && (
+                  <div className="pt-1">
+                    <button type="button" onClick={onOpenDisplaySettings} className={actionButtonClass}>
+                      <Monitor className="size-3.5" />
+                      <span>Open Android Display Settings</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Category 2: Launcher Preferences */}
+            {activeTab === 'launcher' && (
+              <div className="flex flex-col gap-3">
                 <button
-                  ref={(el) => {
-                    contentRefs.current[0] = el
-                  }}
                   type="button"
+                  role="switch"
+                  aria-checked={settings.autoAdvanceHero}
                   onClick={() => toggleSetting('autoAdvanceHero')}
-                  className={cn(
-                    'rounded-full px-4 py-1.5 text-xs font-bold transition-all outline-none focus:ring-2 focus:ring-white focus:scale-105 shadow-sm',
-                    !settings.autoAdvanceHero && 'bg-white/10 text-white/60 hover:bg-white/20',
-                  )}
-                  style={
-                    settings.autoAdvanceHero
-                      ? {
-                          backgroundColor: currentTheme.accent,
-                          color: currentTheme.accentText || '#ffffff',
-                          boxShadow: `0 4px 14px ${currentTheme.glow1}`,
-                        }
-                      : undefined
-                  }
+                  className={rowButtonClass}
                 >
-                  {settings.autoAdvanceHero ? 'Auto (9s)' : 'Manual'}
+                  <div>
+                    <span className="block text-sm font-semibold text-white">Auto-Advance Featured Carousel</span>
+                    <span className="mt-0.5 block text-xs text-white/60">
+                      Automatically rotates featured hero titles every 9 seconds when idle.
+                    </span>
+                  </div>
+                  <ToggleSwitch
+                    checked={settings.autoAdvanceHero}
+                    accent={tokens.accent}
+                    glow={tokens.glow1}
+                  />
                 </button>
-              </div>
 
-              <div className="flex items-center justify-between rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div>
-                  <span className="text-base font-bold text-white block">Status Clock Format</span>
-                  <span className="text-xs text-white/60 block mt-0.5">
-                    Choose between standard 12-hour and military 24-hour time.
-                  </span>
-                </div>
                 <button
-                  ref={(el) => {
-                    contentRefs.current[1] = el
-                  }}
                   type="button"
                   onClick={() => toggleSetting('clock24h')}
-                  className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-bold text-white hover:bg-white/20 transition-all outline-none focus:ring-2 focus:ring-white focus:scale-105"
+                  className={rowButtonClass}
                 >
-                  {settings.clock24h ? '24-Hour (14:30)' : '12-Hour (2:30 PM)'}
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div>
-                  <span className="text-base font-bold text-white block">Header Live Weather</span>
-                  <span className="text-xs text-white/60 block mt-0.5">
-                    Display local temperature badge alongside the status clock.
-                  </span>
-                </div>
-                <button
-                  ref={(el) => {
-                    contentRefs.current[2] = el
-                  }}
-                  type="button"
-                  onClick={() => toggleSetting('showWeather')}
-                  className={cn(
-                    'rounded-full px-4 py-1.5 text-xs font-bold transition-all outline-none focus:ring-2 focus:ring-white focus:scale-105 shadow-sm',
-                    !settings.showWeather && 'bg-white/10 text-white/60 hover:bg-white/20',
-                  )}
-                  style={
-                    settings.showWeather
-                      ? {
-                          backgroundColor: currentTheme.accent,
-                          color: currentTheme.accentText || '#ffffff',
-                          boxShadow: `0 4px 14px ${currentTheme.glow1}`,
-                        }
-                      : undefined
-                  }
-                >
-                  {settings.showWeather ? 'Visible' : 'Hidden'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Category 3: Audio & Sound */}
-          {activeTab === 'audio' && (
-            <div className="flex flex-col gap-5">
-              <button type="button" data-launcher-sound="true" role="slider" aria-label="Launcher sounds"
-                aria-valuemin={0} aria-valuemax={100} aria-valuenow={soundVolume}
-                aria-valuetext={soundVolume === 0 ? 'Off' : `${soundVolume}%`}
-                onClick={() => updateSoundVolume(soundVolume === 0 ? lastSoundVolume.current : 0)}
-                className="w-full rounded-2xl bg-white/5 p-6 text-left outline-none transition-colors duration-150">
-                <span className="flex items-center justify-between gap-5">
-                  <span className="text-base font-semibold">Launcher sounds</span>
-                  <span className="text-sm font-bold" style={{ color: currentTheme.accent }}>{soundVolume === 0 ? 'Off' : `${soundVolume}%`}</span>
-                </span>
-                <span className="mt-4 block h-1.5 overflow-hidden rounded-full bg-white/15">
-                  <span className="block h-full rounded-full" style={{ width: `${soundVolume}%`, backgroundColor: currentTheme.accent }} />
-                </span>
-                <span className="mt-3 block text-xs text-white/55">Left / Right to adjust · Select to {soundVolume === 0 ? 'turn on' : 'mute'} · Up for categories</span>
-              </button>
-              {audioError && <p role="alert" className="text-sm text-red-300">{audioError}</p>}
-              {onOpenSoundSettings && <button type="button" onClick={onOpenSoundSettings}
-                className="flex w-full items-center justify-between rounded-2xl bg-white/5 p-6 text-left outline-none transition-colors duration-150">
-                <span><span className="block text-base font-semibold">Open Android audio settings</span>
-                  <span className="mt-1 block text-xs text-white/55">Volume, sound output and surround formats</span></span>
-                <ChevronRight className="size-5 shrink-0 text-white/55" aria-hidden="true" />
-              </button>}
-            </div>
-          )}
-
-          {/* Category 4: Apps & Storage */}
-          {activeTab === 'apps' && (
-            <div className="flex flex-col gap-3.5">
-              <div className="rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-base font-bold text-white">Active Streaming Apps</span>
-                  <span
-                    className="text-xs font-mono font-bold"
-                    style={{ color: currentTheme.accent }}
-                  >
-                    {installedAppsCount} Apps Installed
-                  </span>
-                </div>
-                <p className="text-xs text-white/60 mb-3">
-                  You can move apps, install new channels from Google Play Store, or pin them directly from My Apps menu.
-                </p>
-                <button
-                  ref={(el) => {
-                    contentRefs.current[0] = el
-                  }}
-                  type="button"
-                  onClick={onResetApps}
-                  className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/20 transition-all outline-none focus:ring-2 focus:ring-white focus:scale-105"
-                >
-                  <RotateCcw className="size-3.5" />
-                  <span>Reset App Row to Default</span>
-                </button>
-              </div>
-
-              <div className="rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-base font-bold text-white">Internal 16GB eMMC Storage</span>
-                  <span className="text-xs font-mono text-white/80">11.8 GB Free of 16.0 GB</span>
-                </div>
-                <div className="h-2.5 w-full rounded-full bg-white/15 overflow-hidden mb-3">
-                  <div
-                    className="relative h-full overflow-hidden rounded-full transition-all"
-                    style={{ width: '26%', boxShadow: '0 0 10px var(--tv-accent, #00f0ff)' }}
-                  >
-                    <FlowFill />
-                  </div>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-white/50">Launcher Cache: 2.4 MB</span>
-                  <button
-                    ref={(el) => {
-                      contentRefs.current[1] = el
-                    }}
-                    type="button"
-                    onClick={() => setCacheCleared(true)}
-                    className="rounded-md px-2 py-1 text-xs font-semibold outline-none transition-colors focus:ring-2 focus:ring-white"
-                    style={{ color: currentTheme.accent }}
-                  >
-                    {cacheCleared ? 'Cache Cleared ✓' : 'Clear Temporary Cache'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Category 5: Network & Account */}
-          {activeTab === 'network' && (
-            <div className="flex flex-col gap-3.5">
-              <div className="rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div className="flex items-center gap-3 mb-3">
-                  <div
-                    className="grid size-10 place-items-center rounded-full text-white font-bold"
-                    style={{
-                      backgroundColor: currentTheme.accent,
-                      color: currentTheme.accentText || '#ffffff',
-                      boxShadow: `0 0 14px ${currentTheme.glow1}`,
-                    }}
-                  >
-                    <User className="size-5" />
-                  </div>
                   <div>
-                    <span className="text-base font-bold text-white block">Launcher profile</span>
-                    <span className="text-xs text-white/50 block">{activeProfileName ?? 'No profile selected'}</span>
+                    <span className="block text-sm font-semibold text-white">Status Clock Format</span>
+                    <span className="mt-0.5 block text-xs text-white/60">
+                      Switch between standard 12-hour and 24-hour time display.
+                    </span>
                   </div>
-                </div>
-                <button type="button" onClick={onSelectProfile} className="rounded-xl bg-white/10 px-4 py-2 text-xs font-semibold text-white">
-                  Select launcher profile
+                  <span
+                    className="shrink-0 rounded-full border border-[var(--tv-glass-border)] bg-black/35 px-3.5 py-1.5 text-xs font-semibold tabular-nums"
+                    style={{ color: tokens.accent }}
+                  >
+                    {settings.clock24h ? '24-Hour (14:30)' : '12-Hour (2:30 PM)'}
+                  </span>
                 </button>
-                {onOpenAccountSettings && (
-                  <button type="button" onClick={onOpenAccountSettings} className="ml-3 rounded-xl bg-white/10 px-4 py-2 text-xs font-semibold text-white">
-                    Google TV accounts
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.showWeather}
+                  onClick={() => toggleSetting('showWeather')}
+                  className={rowButtonClass}
+                >
+                  <div>
+                    <span className="block text-sm font-semibold text-white">Header Live Weather</span>
+                    <span className="mt-0.5 block text-xs text-white/60">
+                      Display local temperature badge alongside the status clock.
+                    </span>
+                  </div>
+                  <ToggleSwitch
+                    checked={settings.showWeather}
+                    accent={tokens.accent}
+                    glow={tokens.glow1}
+                  />
+                </button>
+              </div>
+            )}
+
+            {/* Category 3: Audio & Sound */}
+            {activeTab === 'audio' && (
+              <div className="flex flex-col gap-3.5">
+                <button
+                  type="button"
+                  data-launcher-sound="true"
+                  role="slider"
+                  aria-label="Launcher sounds"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={soundVolume}
+                  aria-valuetext={soundVolume === 0 ? 'Off' : `${soundVolume}%`}
+                  onClick={() => updateSoundVolume(soundVolume === 0 ? lastSoundVolume.current : 0)}
+                  className={cn(rowButtonClass, 'flex-col items-stretch p-5')}
+                >
+                  <span className="flex items-center justify-between gap-5">
+                    <span className="text-sm font-semibold text-white">Launcher Navigation Sounds</span>
+                    <span
+                      className="text-sm font-bold tabular-nums"
+                      style={{ color: tokens.accent }}
+                    >
+                      {soundVolume === 0 ? 'Muted' : `${soundVolume}%`}
+                    </span>
+                  </span>
+                  <span className="mt-3.5 block h-2 overflow-hidden rounded-full bg-white/15">
+                    <span
+                      className="relative block h-full overflow-hidden rounded-full transition-[width] duration-150"
+                      style={{ width: `${soundVolume}%` }}
+                    >
+                      <FlowFill />
+                    </span>
+                  </span>
+                </button>
+
+                {audioError && (
+                  <p role="alert" className="text-sm text-rose-300">
+                    {audioError}
+                  </p>
+                )}
+
+                {onOpenSoundSettings && (
+                  <button
+                    type="button"
+                    onClick={onOpenSoundSettings}
+                    className={rowButtonClass}
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold text-white">Open Android Audio Settings</span>
+                      <span className="mt-0.5 block text-xs text-white/55">
+                        Volume, sound output, and surround audio formats
+                      </span>
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-white/55" aria-hidden="true" />
                   </button>
                 )}
               </div>
+            )}
 
-              <div className="rounded-2xl bg-white/5 p-4 border border-white/10">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <Wifi className="size-4" style={{ color: currentTheme.accent }} />
-                    <span className="text-base font-bold text-white">{network?.label ?? (native ? 'Checking connection' : 'Not available in browser')}</span>
+            {/* Category 4: Apps & Storage */}
+            {activeTab === 'apps' && (
+              <div className="flex flex-col gap-3.5">
+                <div className={cn(infoCardClass, 'p-4')}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-semibold text-white">Active Streaming Apps</span>
+                    <span
+                      className="text-xs font-semibold tabular-nums"
+                      style={{ color: tokens.accent }}
+                    >
+                      {installedAppsCount} Apps Installed
+                    </span>
                   </div>
-                  <span
-                    className="text-xs font-mono font-bold"
-                    style={{ color: currentTheme.accent }}
-                  >
-                    {network ? (network.connected ? (network.internet ? 'Internet connected' : 'Connected · internet unverified') : 'Offline') : ''}
-                  </span>
+                  <p className="text-xs text-white/60 mb-3.5">
+                    Customize pinned applications and home row ordering.
+                  </p>
+                  <button type="button" onClick={onResetApps} className={actionButtonClass}>
+                    <RotateCcw className="size-3.5" />
+                    <span>Reset App Row to Default</span>
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-white/60">
-                  <div>IP address: <span className="text-white font-mono">{network?.ipAddress ?? 'Unavailable'}</span></div>
-                  <div>VPN: <span className="text-white font-medium">{network?.vpn ? 'Active' : 'Not detected'}</span></div>
-                </div>
-              </div>
-              {onOpenWifiSettings && (
-                <button
-                  ref={(el) => {
-                    contentRefs.current[0] = el
-                  }}
-                  type="button"
-                  onClick={onOpenWifiSettings}
-                  className="flex items-center gap-2 self-start rounded-xl bg-white/10 px-4 py-2 text-xs font-semibold text-white outline-none transition-all hover:bg-white/20 focus:scale-105 focus:ring-2 focus:ring-white"
-                >
-                  <Wifi className="size-3.5" />
-                  <span>Open Wi-Fi Settings</span>
-                </button>
-              )}
-            </div>
-          )}
 
-          {/* Category 6: System & About */}
-          {activeTab === 'system' && (
-            <div className="flex flex-col gap-3">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="rounded-2xl bg-white/5 p-3.5 border border-white/10">
-                  <span className="text-white/50 block font-mono text-[10px] uppercase">Device Model</span>
-                  <span className="text-sm font-bold text-white mt-0.5 block">onn. 4K Plus Streaming Device</span>
-                  <span className="text-white/60">Walmart Item #15557424949</span>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3.5 border border-white/10">
-                  <span className="text-white/50 block font-mono text-[10px] uppercase">SoC / Processor</span>
-                  <span className="text-sm font-bold text-white mt-0.5 block">Amlogic S905X5M</span>
-                  <span className="text-white/60">Quad-core Cortex-A55 @ 2.5 GHz</span>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3.5 border border-white/10">
-                  <span className="text-white/50 block font-mono text-[10px] uppercase">Graphics / GPU</span>
-                  <span className="text-sm font-bold text-white mt-0.5 block">ARM Mali-G310 V2</span>
-                  <span className="text-white/60">Hardware AV1 / HEVC Decoding</span>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3.5 border border-white/10">
-                  <span className="text-white/50 block font-mono text-[10px] uppercase">System RAM & ROM</span>
-                  <span className="text-sm font-bold text-white mt-0.5 block">2GB DDR4 · 16GB eMMC</span>
-                  <span className="text-white/60">Widevine L1 DRM Certified</span>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3.5 border border-white/10">
-                  <span className="text-white/50 block font-mono text-[10px] uppercase">Operating System</span>
-                  <span className="text-sm font-bold text-white mt-0.5 block">Google TV (Android 14)</span>
-                  <span className="text-white/60">Kernel 6.1.x</span>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3.5 border border-white/10">
-                  <span className="text-white/50 block font-mono text-[10px] uppercase">Launcher Version</span>
-                  <span className="text-sm font-bold text-white mt-0.5 block">v2.6.0 (Futuristic Edition)</span>
-                  <span className="text-white/60">Theofficialhoody-dev / hxxdy</span>
+                <div className={cn(infoCardClass, 'p-4')}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-white">Internal 16GB eMMC Storage</span>
+                    <span className="text-xs tabular-nums text-white/80">11.8 GB Free of 16.0 GB</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-white/15 overflow-hidden mb-3.5">
+                    <div
+                      className="relative h-full overflow-hidden rounded-full transition-all"
+                      style={{ width: '26%', boxShadow: `0 0 10px ${tokens.accent}` }}
+                    >
+                      <FlowFill />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-xs text-white/55">
+                      {cacheCleared ? 'Temporary session cache cleared' : 'Temporary launcher cache: 2.4 MB'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearTemporaryCache}
+                      className={actionButtonClass}
+                    >
+                      <span>{cacheCleared ? 'Cache Cleared ✓' : 'Clear Temporary Cache'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {onOpenSystemSettings && (
-                <button
-                  ref={(el) => {
-                    contentRefs.current[0] = el
-                  }}
-                  type="button"
-                  onClick={onOpenSystemSettings}
-                  className="flex items-center gap-2 self-start rounded-xl bg-white/10 px-4 py-2 text-xs font-semibold text-white outline-none transition-all hover:bg-white/20 focus:scale-105 focus:ring-2 focus:ring-white"
-                >
-                  <Sliders className="size-3.5" />
-                  <span>Open Android System Settings</span>
-                </button>
-              )}
-              <div className="flex items-center justify-between rounded-2xl bg-white/5 p-3.5 border border-white/10 mt-1">
-                <span className="text-xs text-white/70">System Software Status</span>
-                <button
-                  ref={(el) => {
-                    contentRefs.current[1] = el
-                  }}
-                  type="button"
-                  onClick={() => setUpdateChecked(true)}
-                  className="flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-white outline-none hover:bg-white/20 focus:ring-2 focus:ring-white transition-all"                >
-                  <RefreshCw
-                    className="size-3.5"
-                    style={updateChecked ? { color: currentTheme.accent } : undefined}
-                  />
-                  <span>{updateChecked ? 'Up to date (Checked)' : 'Check for Updates'}</span>
-                </button>
+            {/* Category 5: Network & Account */}
+            {activeTab === 'network' && (
+              <div className="flex flex-col gap-3.5">
+                <div className={cn(infoCardClass, 'p-4')}>
+                  <div className="flex items-center gap-3 mb-3.5">
+                    <div
+                      className="grid size-10 place-items-center rounded-full font-bold"
+                      style={{
+                        backgroundColor: tokens.accent,
+                        color: tokens.accentText,
+                        boxShadow: `0 0 14px ${tokens.glow1}`,
+                      }}
+                    >
+                      <User className="size-5" />
+                    </div>
+                    <div>
+                      <span className="block text-sm font-semibold text-white">Launcher Profile</span>
+                      <span className="block text-xs text-white/55">{activeProfileName ?? 'No profile selected'}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button type="button" onClick={onSelectProfile} className={actionButtonClass}>
+                      <User className="size-3.5" />
+                      <span>Switch Launcher Profile</span>
+                    </button>
+                    {onOpenAccountSettings && (
+                      <button type="button" onClick={onOpenAccountSettings} className={actionButtonClass}>
+                        <span>Google TV Accounts</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className={cn(infoCardClass, 'p-4')}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <Wifi className="size-4" style={{ color: tokens.accent }} />
+                      <span className="text-sm font-semibold text-white">
+                        {network?.label ?? (native ? 'Checking connection' : 'Browser preview session')}
+                      </span>
+                    </div>
+                    <span
+                      className="text-xs font-semibold"
+                      style={{ color: tokens.accent }}
+                    >
+                      {network
+                        ? network.connected
+                          ? network.internet
+                            ? 'Internet connected'
+                            : 'Connected · no internet'
+                          : 'Offline'
+                        : ''}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-white/60">
+                    <div>
+                      IP address:{' '}
+                      <span className="font-medium tabular-nums text-white">
+                        {network?.ipAddress ?? 'Unavailable'}
+                      </span>
+                    </div>
+                    <div>
+                      VPN: <span className="font-medium text-white">{network?.vpn ? 'Active' : 'Not detected'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {onOpenWifiSettings && (
+                  <div className="pt-0.5">
+                    <button type="button" onClick={onOpenWifiSettings} className={actionButtonClass}>
+                      <Wifi className="size-3.5" />
+                      <span>Open Wi-Fi Settings</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Category 6: System & About */}
+            {activeTab === 'system' && (
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className={cn(infoCardClass, 'p-3.5')}>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                      Device Model
+                    </span>
+                    <span className="mt-1 block text-sm font-bold text-white">onn. 4K Plus Streaming Device</span>
+                    <span className="text-white/60">Walmart Item #15557424949</span>
+                  </div>
+                  <div className={cn(infoCardClass, 'p-3.5')}>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                      SoC / Processor
+                    </span>
+                    <span className="mt-1 block text-sm font-bold text-white">Amlogic S905X5M</span>
+                    <span className="text-white/60">Quad-core Cortex-A55 @ 2.5 GHz</span>
+                  </div>
+                  <div className={cn(infoCardClass, 'p-3.5')}>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                      Graphics / GPU
+                    </span>
+                    <span className="mt-1 block text-sm font-bold text-white">ARM Mali-G310 V2</span>
+                    <span className="text-white/60">Hardware AV1 / HEVC Decoding</span>
+                  </div>
+                  <div className={cn(infoCardClass, 'p-3.5')}>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                      Memory & Storage
+                    </span>
+                    <span className="mt-1 block text-sm font-bold text-white">2GB DDR4 · 16GB eMMC</span>
+                    <span className="text-white/60">Widevine L1 DRM Certified</span>
+                  </div>
+                  <div className={cn(infoCardClass, 'p-3.5')}>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                      Operating System
+                    </span>
+                    <span className="mt-1 block text-sm font-bold text-white">Google TV (Android 14)</span>
+                    <span className="text-white/60">Kernel 6.1.x</span>
+                  </div>
+                  <div className={cn(infoCardClass, 'p-3.5')}>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                      Launcher Build
+                    </span>
+                    <span className="mt-1 block text-sm font-bold text-white">v2.6.0 (Cinematic Edition)</span>
+                    <span className="text-white/60">Smoked-Glass 4K Shell</span>
+                  </div>
+                </div>
+
+                <div className={cn(infoCardClass, 'flex flex-wrap items-center justify-between gap-3 p-3.5 mt-0.5')}>
+                  <span className="text-xs text-white/70">System Software Status</span>
+                  <div className="flex items-center gap-2.5">
+                    {onOpenSystemSettings && (
+                      <button type="button" onClick={onOpenSystemSettings} className={actionButtonClass}>
+                        <Sliders className="size-3.5" />
+                        <span>Android Settings</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setUpdateChecked(true)}
+                      className={actionButtonClass}
+                    >
+                      <RefreshCw
+                        className="size-3.5"
+                        style={updateChecked ? { color: tokens.accent } : undefined}
+                      />
+                      <span>{updateChecked ? 'Up to date' : 'Check for Updates'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </main>
       </div>

@@ -13,7 +13,7 @@ export function ServiceLogo({ id, icon, className }: LogoProps) {
       alt=""
       aria-hidden="true"
       draggable={false}
-      className={cn('object-contain', service?.mono && 'brightness-0 invert', className)}
+      className={cn('object-contain object-center', service?.mono && 'brightness-0 invert', className)}
     />
   )
 }
@@ -38,9 +38,13 @@ export function ServiceBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-[0.45em] rounded-full bg-black/55 px-[0.6em] py-[0.35em] ring-1 ring-inset ring-white/15',
+        'inline-flex items-center gap-[0.45em] rounded-full px-[0.6em] py-[0.35em]',
         className,
       )}
+      style={{
+        backgroundColor: 'var(--tv-surface, rgba(0,0,0,0.55))',
+        boxShadow: 'inset 0 0 0 1px var(--tv-glass-border, rgba(255,255,255,0.16))',
+      }}
     >
       {(id || icon) && <ServiceLogo id={id} icon={icon} className={cn('h-[1.1em] w-auto max-w-[3.2em]', iconClassName)} />}
       {withName ? (

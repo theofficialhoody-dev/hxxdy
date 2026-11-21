@@ -165,33 +165,26 @@
   }
 }
 
-.tv-menu-focus button:focus,
-.tv-menu-focus input:focus {
-  outline: none !important;
-  box-shadow: 0 0 10px var(--tv-accent, #ffffff), 0 0 24px var(--tv-glow, rgba(255,255,255,0.3)) !important;
-}
-
-.tv-menu-focus button {
+.tv-menu-focus button,
+.tv-menu-focus input {
   scroll-margin: 20px;
 }
 
-.tv-menu-focus button:focus {
-  filter: brightness(1.2);
+.tv-menu-focus button:focus-visible {
+  outline: none;
 }
 
-.tv-menu-focus button.tv-app-tile:focus {
-  box-shadow: none !important;
-  filter: none;
+@keyframes tv-tile-float {
+  0%, 100% {
+    transform: translateY(-4px) scale(1.12);
+  }
+  50% {
+    transform: translateY(-7px) scale(1.13);
+  }
 }
 
-.tv-app-art {
-  transition: transform 150ms ease, box-shadow 150ms ease, filter 150ms ease;
-}
-
-.tv-app-tile:focus .tv-app-art {
-  transform: scale(1.035);
-  box-shadow: 0 0 10px var(--tv-accent, #ffffff), 0 0 25px var(--tv-glow, rgba(255,255,255,0.3));
-  filter: brightness(1.08);
+.animate-tv-tile-float {
+  animation: tv-tile-float 1.8s ease-in-out infinite;
 }
 
 @keyframes kenburns {
@@ -212,18 +205,6 @@
   }
 }
 
-@keyframes gradient-flow {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -100% 0;
-  }
-}
-
-.animate-gradient-flow {
-  animation: gradient-flow 2.6s linear infinite;
-}
 
 @keyframes tv-flow {
   from {
@@ -232,6 +213,63 @@
   to {
     transform: translate3d(0, 0, 0);
   }
+}
+
+@property --tv-grad-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes tv-border-spin {
+  to {
+    --tv-grad-angle: 360deg;
+  }
+}
+
+/* Glitch-free 1.5px rotating gradient ring synchronized with .tv-halo-glow (never clips corners on 3D cards or pills) */
+.tv-conic-border {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--tv-grad-angle, 0deg) at 50% 50%,
+    var(--tv-glass-border, rgba(255, 255, 255, 0.2)) 0deg,
+    var(--tv-accent, #38bdf8) 70deg,
+    var(--tv-accent-2, #6366f1) 185deg,
+    var(--tv-accent, #38bdf8) 280deg,
+    var(--tv-glass-border, rgba(255, 255, 255, 0.2)) 340deg,
+    var(--tv-glass-border, rgba(255, 255, 255, 0.2)) 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: tv-border-spin 4.2s linear infinite;
+}
+
+/* Diffused sweeping conic outer halo sitting behind an opaque surface (zero corner/edge clipping) */
+.tv-halo-glow {
+  position: absolute;
+  inset: var(--tv-halo-spread, -3px);
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--tv-grad-angle, 0deg) at 50% 50%,
+    transparent 0deg,
+    var(--tv-accent, #38bdf8) 70deg,
+    var(--tv-accent-2, #6366f1) 185deg,
+    var(--tv-accent, #38bdf8) 280deg,
+    transparent 340deg,
+    transparent 360deg
+  );
+  filter: blur(var(--tv-halo-blur, 11px));
+  opacity: clamp(0.55, calc(0.82 * var(--tv-glow-scale, 1)), 1);
+  will-change: background;
+  animation: tv-border-spin 4.2s linear infinite;
 }
 
 /* 400% wide track of 200% tiles: translating by one tile (50%) loops seamlessly. */
@@ -243,41 +281,13 @@
   width: 400%;
   background: linear-gradient(
     90deg,
-    var(--tv-accent, #00f0ff) 0%,
-    var(--tv-glow-2, #a855f7) 40%,
-    var(--tv-accent, #00f0ff) 70%,
-    var(--tv-accent, #00f0ff) 100%
+    var(--tv-accent, #38bdf8) 0%,
+    var(--tv-accent-2, #6366f1) 50%,
+    var(--tv-accent, #38bdf8) 100%
   );
   background-size: 50% 100%;
   will-change: transform;
   animation: tv-flow 2.6s linear infinite;
-}
-
-.tv-accent-gradient {
-  background: linear-gradient(
-    90deg,
-    var(--tv-accent, #00f0ff) 0%,
-    var(--tv-glow-2, #a855f7) 40%,
-    var(--tv-accent, #00f0ff) 70%,
-    var(--tv-accent, #00f0ff) 100%
-  );
-  background-size: 200% 100%;
-  animation: gradient-flow 2.6s linear infinite;
-}
-
-.tv-accent-gradient-text {
-  background: linear-gradient(
-    90deg,
-    var(--tv-accent, #00f0ff) 0%,
-    var(--tv-glow-2, #a855f7) 40%,
-    var(--tv-accent, #00f0ff) 70%,
-    var(--tv-accent, #00f0ff) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent !important;
-  animation: gradient-flow 2.6s linear infinite;
 }
 
 @utility no-scrollbar {
@@ -289,10 +299,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-kenburns,
-  .animate-gradient-flow,
-  .tv-flow-track,
-  .tv-accent-gradient,
-  .tv-accent-gradient-text {
+  .tv-conic-border,
+  .tv-halo-glow,
+  .tv-flow-track {
     animation: none;
   }
 }

@@ -1,9 +1,9 @@
 'use client'
 
-import { CircleUserRound, LayoutGrid, Palette, Settings, Shield, Wifi, type LucideIcon } from 'lucide-react'
+import { CircleUserRound, LayoutGrid, Palette, Settings, Shield, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { NavItemId } from '@/lib/launcher-data'
-import type { ThemeConfig } from '@/lib/theme-data'
+import type { Profile } from '@/lib/profiles'
 import { StatusClock } from './status-clock'
 
 const icons: Record<NavItemId, LucideIcon> = {
@@ -15,15 +15,6 @@ const icons: Record<NavItemId, LucideIcon> = {
   surfshark: Shield,
 }
 
-const ariaLabels: Record<NavItemId, string> = {
-  profile: 'Switch profile',
-  theme: 'Change UI Theme',
-  network: 'Network status: connected',
-  settings: 'Settings',
-  apps: 'Jump to My Apps',
-  surfshark: 'Open Surfshark VPN',
-}
-
 type TopHeaderProps = {
   items: { id: NavItemId; label: string }[]
   focusedIndex: number
@@ -31,9 +22,10 @@ type TopHeaderProps = {
   onHover: (index: number) => void
   onActivate: (index: number) => void
   activeThemeName?: string
+  activeProfile?: Profile
+  networkConnected?: boolean
   clock24h?: boolean
   showWeather?: boolean
-  currentTheme?: ThemeConfig
 }
 
 export function TopHeader({
@@ -43,64 +35,108 @@ export function TopHeader({
   onHover,
   onActivate,
   activeThemeName,
+  activeProfile,
+  networkConnected = true,
   clock24h,
   showWeather,
-  currentTheme,
 }: TopHeaderProps) {
-  const accentColor = currentTheme?.accent || 'var(--tv-accent, #00f0ff)'
-  const accentTextColor = currentTheme?.accentText || '#000000'
-  const glowColor = currentTheme?.glow1 || 'var(--tv-glow, rgba(56,189,248,0.7))'
+  const accentColor = 'var(--tv-accent, #38bdf8)'
+  const accentTextColor = 'var(--tv-accent-text, #000000)'
+
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-end gap-[1.6vw] px-[5vw] pt-[4vh]">
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-center justify-end gap-[1.5vw] px-[5vw] pt-[3.4vh]">
       <StatusClock clock24h={clock24h} showWeather={showWeather} />
       <nav aria-label="System" className="pointer-events-auto">
-        <ul className="flex items-center gap-[0.3vw] rounded-full bg-black/70 p-[0.35vw] shadow-[0_8px_32px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/15 backdrop-blur-sm">
+        <ul
+          className="flex items-center gap-[0.34vw] rounded-full p-[clamp(4px,0.34vw,6px)]"
+          style={{
+            backgroundColor: 'var(--tv-surface, rgba(10,11,16,0.86))',
+            boxShadow: 'inset 0 0 0 1px var(--tv-glass-border, rgba(255,255,255,0.14)), 0 10px 30px rgba(0,0,0,0.5)',
+          }}
+        >
           {items.map((item, index) => {
-            const Icon = icons[item.id]
+            const Icon = item.id === 'network' && !networkConnected ? WifiOff : icons[item.id]
             const focused = focusedIndex === index
-            const labelText = item.id === 'theme' && activeThemeName ? `Theme · ${activeThemeName}` : item.label
+            const isLast = index === items.length - 1
+            const labelText =
+              item.id === 'profile' && activeProfile
+                ? activeProfile.name
+                : item.id === 'theme' && activeThemeName
+                  ? `Theme · ${activeThemeName}`
+                  : item.id === 'network' && !networkConnected
+                    ? 'Offline · Network'
+                    : item.label
+
+            const ariaLabel =
+              item.id === 'profile'
+                ? `Switch profile (${activeProfile?.name ?? 'Default'})`
+                : item.id === 'theme'
+                  ? 'Change UI Theme'
+                  : item.id === 'network'
+                    ? networkConnected
+                      ? 'Network status: connected'
+                      : 'Network status: disconnected'
+                    : item.id === 'settings'
+                      ? 'Settings'
+                      : item.id === 'apps'
+                        ? 'Jump to My Apps'
+                        : 'Open Surfshark VPN'
+
             return (
               <li key={item.id} className="relative">
                 <button
                   ref={registerRef(index)}
                   type="button"
-                  aria-label={ariaLabels[item.id]}
+                  aria-label={ariaLabel}
                   onMouseEnter={() => onHover(index)}
                   onClick={() => onActivate(index)}
                   className={cn(
-                    'relative grid size-[clamp(34px,2.6vw,56px)] place-items-center rounded-full text-white/85 outline-none',
-                    'transition-[transform,background-color,color,box-shadow] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]',
-                    focused && 'scale-110 shadow-[0_6px_24px_rgba(0,0,0,0.5)]',
-                    focused ? 'font-bold' : 'hover:bg-white/10',
+                    'relative grid size-[clamp(38px,2.85vw,56px)] place-items-center rounded-full text-white/85 outline-none focus:outline-none focus-visible:outline-none',
+                    'transition-[transform,background-color,color,box-shadow] duration-200 ease-out',
+                    focused ? 'scale-105' : 'hover:bg-white/10 hover:text-white',
                   )}
                   style={
                     focused
                       ? {
                           backgroundColor: accentColor,
                           color: accentTextColor,
-                          boxShadow: `0 0 20px ${glowColor}, 0 4px 12px rgba(0,0,0,0.5)`,
+                          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.28), 0 0 18px var(--tv-glow, rgba(56,189,248,0.35))',
                         }
                       : undefined
                   }
                 >
-                  <Icon className="size-[46%]" strokeWidth={1.6} aria-hidden="true" />
-                  {item.id === 'network' && (
+                  {item.id === 'profile' && activeProfile ? (
                     <span
+                      className="grid size-[64%] place-items-center rounded-full text-[clamp(12px,0.92vw,18px)] font-bold leading-none text-black"
+                      style={{ backgroundColor: activeProfile.color }}
                       aria-hidden="true"
+                    >
+                      {activeProfile.name.slice(0, 1).toUpperCase()}
+                    </span>
+                  ) : (
+                    <Icon
                       className={cn(
-                        'absolute right-[22%] top-[22%] size-[14%] rounded-full bg-emerald-400 ring-2',
-                        focused ? 'ring-white' : 'ring-transparent',
+                        'size-[47%]',
+                        item.id === 'network' && !networkConnected && !focused && 'text-rose-400',
                       )}
+                      strokeWidth={1.75}
+                      aria-hidden="true"
                     />
                   )}
                 </button>
                 <span
                   aria-hidden="true"
                   className={cn(
-                    'pointer-events-none absolute left-1/2 top-full mt-[1.2vh] -translate-x-1/2 whitespace-nowrap rounded-full bg-black/75 px-[0.85em] py-[0.35em] text-[clamp(11px,0.8vw,16px)] font-medium text-white ring-1 ring-inset ring-white/15 backdrop-blur-sm',
-                    'transition-[opacity,transform] duration-300',
+                    'pointer-events-none absolute top-full mt-[1.2vh] whitespace-nowrap rounded-full px-[0.95em] py-[0.38em] text-[clamp(12px,0.84vw,16px)] font-medium text-white',
+                    isLast ? 'right-0' : 'left-1/2 -translate-x-1/2',
+                    'transition-[opacity,transform] duration-200',
                     focused ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0',
                   )}
+                  style={{
+                    backgroundColor: 'var(--tv-surface, rgba(10,11,16,0.92))',
+                    boxShadow:
+                      'inset 0 0 0 1px var(--tv-glass-border, rgba(255,255,255,0.16)), 0 8px 24px rgba(0,0,0,0.65), 0 0 16px var(--tv-glow, rgba(56,189,248,0.24))',
+                  }}
                 >
                   {labelText}
                 </span>

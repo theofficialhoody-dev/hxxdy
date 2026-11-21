@@ -1,15 +1,25 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Shield } from 'lucide-react'
+import { ExternalLink, Shield, X } from 'lucide-react'
+import { colorWithAlpha, resolveThemeTokens, type ThemeConfig } from '@/lib/theme-data'
+import { cn } from '@/lib/utils'
 
-export function SurfsharkModal({ isOpen, onClose, onOpen }: {
+export function SurfsharkModal({
+  isOpen,
+  currentTheme,
+  onClose,
+  onOpen,
+}: {
   isOpen: boolean
+  currentTheme?: ThemeConfig
   onClose: () => void
   onOpen: () => void
 }) {
   const [selected, setSelected] = useState(0)
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
+
+  const tokens = resolveThemeTokens(currentTheme)
 
   useEffect(() => {
     if (isOpen) setSelected(0)
@@ -42,23 +52,134 @@ export function SurfsharkModal({ isOpen, onClose, onOpen }: {
   }, [isOpen, onClose, onOpen, selected])
 
   if (!isOpen) return null
+
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="surfshark-title"
-      className="tv-menu-focus fixed inset-0 z-50 grid place-items-center bg-black/85 text-white">
-      <div className="w-[min(90vw,540px)] rounded-3xl border border-white/20 bg-neutral-950 p-8 shadow-2xl">
-        <div className="flex items-center gap-3">
-          <Shield className="size-8 text-[var(--tv-accent)]" />
-          <h2 id="surfshark-title" className="text-xl font-bold">Surfshark VPN</h2>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="surfshark-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+      className="tv-menu-focus fixed inset-0 z-50 grid place-items-center p-6 text-white animate-in fade-in duration-200"
+      style={{
+        background: `
+          radial-gradient(circle at 50% 40%, ${tokens.glow1}, transparent 65%),
+          radial-gradient(circle at 20% 80%, ${tokens.glow2}, transparent 60%),
+          ${colorWithAlpha(tokens.bg, 0.9)}
+        `,
+        // @ts-expect-error CSS custom properties
+        '--tv-bg': tokens.bg,
+        '--tv-surface': tokens.surface,
+        '--tv-surface-elevated': tokens.surfaceElevated,
+        '--tv-accent': tokens.accent,
+        '--tv-accent-2': tokens.accent2,
+        '--tv-accent-text': tokens.accentText,
+        '--tv-glow': tokens.glow1,
+        '--tv-glow-2': tokens.glow2,
+        '--tv-glass': tokens.glass,
+        '--tv-glass-border': tokens.glassBorder,
+        '--tv-glow-scale': String(tokens.glowScale),
+      }}
+    >
+      <div
+        className="relative w-[min(90vw,520px)] rounded-[28px] border p-8 animate-in zoom-in-95 duration-200"
+        style={{
+          backgroundColor: tokens.surface,
+          borderColor: tokens.glassBorder,
+          boxShadow: `0 28px 80px rgba(0,0,0,0.9), 0 0 48px ${tokens.glow1}`,
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close Surfshark dialog"
+          className="absolute right-5 top-5 grid size-9 place-items-center rounded-full text-white/80 outline-none transition-colors hover:bg-white/15 hover:text-white focus:ring-1 focus:ring-inset focus:ring-[var(--tv-accent)]"
+          style={{
+            backgroundColor: tokens.glass,
+            boxShadow: `inset 0 0 0 1px ${tokens.glassBorder}`,
+          }}
+        >
+          <X className="size-4" />
+        </button>
+
+        <div className="flex items-center gap-3.5">
+          <span
+            className="grid size-11 place-items-center rounded-2xl shadow-lg"
+            style={{
+              backgroundColor: tokens.accent,
+              color: tokens.accentText,
+              boxShadow: `0 4px 18px ${tokens.glow1}`,
+            }}
+          >
+            <Shield className="size-5" />
+          </span>
+          <div>
+            <h2 id="surfshark-title" className="text-xl font-bold tracking-tight">
+              Surfshark VPN
+            </h2>
+            <p className="text-xs text-white/55">Network privacy & tunnel status</p>
+          </div>
         </div>
-        <p className="mt-4 text-sm text-white/75">Connect or disconnect in Surfshark. This device does not provide a supported VPN toggle to other apps.</p>
-        <div className="mt-6 flex gap-3">
-          {['Open Surfshark', 'Close'].map((label, index) => (
-            <button key={label} ref={(el) => { buttons.current[index] = el }} type="button"
-              onMouseEnter={() => setSelected(index)} onClick={index === 0 ? onOpen : onClose}
-              className="rounded-full bg-white/15 px-5 py-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-[var(--tv-accent)]">
-              {label}
-            </button>
-          ))}
+
+        <p className="mt-4 text-sm leading-relaxed text-white/75">
+          Connect or switch VPN locations directly inside the Surfshark app. Android restricts third-party launchers from toggling active VPN tunnels remotely.
+        </p>
+
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            ref={(el) => {
+              buttons.current[0] = el
+            }}
+            type="button"
+            onMouseEnter={() => setSelected(0)}
+            onClick={onOpen}
+            className={cn(
+              'flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold outline-none transition-all duration-150',
+              selected === 0 ? 'scale-[1.03]' : 'text-white hover:bg-white/15',
+            )}
+            style={
+              selected === 0
+                ? {
+                    backgroundColor: tokens.accent,
+                    color: tokens.accentText,
+                    boxShadow: `inset 0 0 0 1px ${tokens.accent}, 0 0 20px ${tokens.glow1}`,
+                  }
+                : {
+                    backgroundColor: tokens.glass,
+                    boxShadow: `inset 0 0 0 1px ${tokens.glassBorder}`,
+                  }
+            }
+          >
+            <ExternalLink className="size-4" />
+            <span>Open Surfshark</span>
+          </button>
+
+          <button
+            ref={(el) => {
+              buttons.current[1] = el
+            }}
+            type="button"
+            onMouseEnter={() => setSelected(1)}
+            onClick={onClose}
+            className={cn(
+              'rounded-full px-5 py-2.5 text-sm font-semibold outline-none transition-all duration-150',
+              selected === 1 ? 'scale-[1.03] text-white' : 'text-white/80 hover:bg-white/15',
+            )}
+            style={
+              selected === 1
+                ? {
+                    backgroundColor: tokens.surfaceElevated,
+                    boxShadow: `inset 0 0 0 1.5px ${tokens.accent}, 0 0 18px ${tokens.glow1}`,
+                  }
+                : {
+                    backgroundColor: tokens.glass,
+                    boxShadow: `inset 0 0 0 1px ${tokens.glassBorder}`,
+                  }
+            }
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
